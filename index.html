@@ -300,7 +300,9 @@ const WALLFRIC  = [0,  0.05, 0.30, 0.70, 0,   0.05, 0.45, 0.60, 0.50, 0.60, 0.02
 const GRAIN     = [0,  0,    0,    0.62, 0.90, 0,   0,    0,   0.46, 0.50, 0,   0.52, 0,   0.52, 0.55, 1.25, 0];
 const MU_S      = [0,  0,    0,    0.90, 0.97, 0,   0,    0,   0.55, 0.75, 0,   1.10, 0,   1.40, 0,    0.985, 0];
 const MU_K      = [0,  0,    0,    0.60, 0,    0,   0,    0,   0.35, 0.55, 0,   0.85, 0,   1.10, 0,    0, 0];
-const COH       = [0, 0, 0, 0, 0, 0, 0, 0.004, 0, 0, 0.60, 0, 0.012, 0, 0, 0, 0.025];
+const COH       = [0, 0, 0, 0, 0, 0, 0, 0.004, 0, 0, 0.025, 0, 0.012, 0, 0, 0, 0.025];
+// Mercury cohesion stays below the near-pressure stiffness scale: oversized attraction collapses
+// droplets, and the positional solver turns their rebound into runaway launch velocity.
 // surface tension: a material with tens>0 spends its two spare density channels on a surface normal instead
 const TENS      = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.003, 0, 0, 0, 0, 0, 0.001];
 // Dissolving inclusions behave as a soft liquid parcel with diminishing mass.
