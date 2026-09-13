@@ -25,6 +25,8 @@ Cells have nine independently combinable organelles. The original five are chemo
 - **Acid defense (4%)**: chartreuse glands spray acid droplets toward nearby predators; the carrier is immune. Acid neutralizes into water after a short lifetime.
 - **Plantlike (5%)**: green moss that suppresses swimming, anchors on dry surfaces, grows roots through terrain, makes free jelly, and launches seeds that germinate on dry ground.
 
+Mobile cells keep their organelle-specific resource targets as first choice and seek nearby jelly as second choice. Cells without specialist targets also seek jelly. This uses one additional channel in the existing shared food cache, with the same sensing range and refresh cadence. Plantlike and frozen cells stay passive.
+
 Traits are sampled independently, so hybrids can inherit any of the 512 combinations. Plantlike takes precedence over active locomotion. Rare cells are placed as complete anatomy with one click of the Life tool; ordinary life can still be painted. Growth and sprays share a capped emission queue, and rigid shape calculations visit each colony's particles in linear time. They swim, feed, reproduce and freeze/thaw. Fire and lava immediately turn exposed non-thermophile life into jelly.
 
 All game code, shaders and interface styles are in `index.html`.
@@ -37,4 +39,5 @@ With Node.js installed:
 node tests/player.test.cjs
 node tests/mercury.test.cjs
 node tests/rare-organelles.test.cjs
+node tests/jelly-navigation.test.cjs
 ```
