@@ -172,7 +172,7 @@
     </div>
   </div>
   <div id="life-guide">
-    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. All five organelles can combine freely. Organelles steer movement toward nearby resources. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
+    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown, acid and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. Rare traits: ivory rigid shells with flexible flagella (6%), jellyfish bells and trailing tendrils (5%), acid-spraying glands with acid immunity (4%), and rooted moss plants that make jelly and burst into seeds (5%). All nine organelles combine freely; plantlike suppresses swimming. Organelles steer movement toward nearby resources. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
     <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div></div>
   </div>
   <div id="status">
@@ -190,7 +190,7 @@
 const TM = 31;   // type mask: five bits, so the table has room past gravel and steam
 const T_DEAD = 0, T_WATER = 1, T_OIL = 2, T_GRAVEL = 3, T_FIRE = 4, T_NITRO = 5, T_JELLO = 6, T_LAVA = 7,
       T_SAND = 8, T_POWDER = 9, T_MERC = 10, T_DIRT = 11, T_MUD = 12, T_SNOW = 13, T_ICE = 14, T_STEAM = 15,
-      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18;
+      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18, T_ACID = 19, T_SEED = 20;
 // Fictional material tuning. Heat uses the existing unit-radius neighbor stencil.
 const MELTDOWN_BLAST = 10000.0, MELTDOWN_PRESSURE = 0.35, MELTDOWN_CHANCE = 0.02;
 const MELTDOWN_REACH = 0.95, MELTDOWN_THERMAL = 24.0;
@@ -204,21 +204,24 @@ const A_FROZEN = 1 << 5; // an unused state bit; genome and vitality remain inta
 //   bits 8-12: appearance; bits 13,14,15: thermophile, radiophile, roller organelles.
 //   bits 16-23  vitality 0-255, spent on upkeep and refilled by eating
 //   bits 24-31: behaviour clause (0,1,3,4,5,7); organelles (2=chemophile,6=predator).
-// Five independent organelle bits: all 32 combinations fit the existing 16-bit genome.
+// Nine independent organelle bits: all 512 combinations fit the existing 16-bit genome.
+// Former cosmetic bits 9-12 are the rare clause: rigid, jellyfish, acid defense, plantlike.
 // Organelle presence is binary and inherited; its expressed size follows stored fuel.
 // Life particles ARE the stabilizing cytoplasm. Only surface particles form membrane bonds.
 // Jelly is the universal food currency. Appearance bit 3 still favours oil buoyancy.
 const geneA = a => (a >>> 8) & 255, geneB = a => (a >>> 24) & 0xBB;
-const O_CHEM = 1, O_PRED = 2, O_THERMO = 4, O_RADIO = 8, O_ROLL = 16;
+const O_CHEM = 1, O_PRED = 2, O_THERMO = 4, O_RADIO = 8, O_ROLL = 16, O_RIGID = 32, O_JELLY = 64, O_ACID = 128, O_PLANT = 256;
+const A_APPEND = 64; // Life reuses the sleep flag for flexible appendages / roots.
+const RARE_MASK = 0x001E; // New clause: four formerly cosmetic bits, independent of all five original organelles.
 const THERMO_FOOD = 0.16, THERMO_SHED = 0.0003, RADIO_RESIST = 0.02;
-const organelles = a => ((a >>> 26) & 1) | (((a >>> 30) & 1) << 1) | (((a >>> 13) & 7) << 2);
+const organelles = a => ((a >>> 26) & 1) | (((a >>> 30) & 1) << 1) | (((a >>> 13) & 7) << 2) | (((a >>> 9) & 15) << 5);
 const genome = a => ((a >>> 8) & 255) | (((a >>> 24) & 255) << 8);
 const vitOf = a => (a >>> 16) & 255;
 const withVit = (a, v) => (a & ~(255 << 16)) | (Math.max(0, Math.min(255, v | 0)) << 16);
 const mkLife = (g, v) => T_LIFE | ((g & 255) << 8) | ((Math.min(255, v) | 0) << 16) | (((g >>> 8) & 255) << 24);
 const B_MOTILE = 1, B_BUOY = 2, B_HARDY = 8, B_CRYO = 16, B_THICK = 32, B_FECUND = 128;
 const isLife = t => t === T_LIFE;
-const membraneStrength = a => 1 + (geneB(a) & B_THICK ? 1.0 : 0) + (geneB(a) & B_HARDY ? 0.35 : 0);
+const membraneStrength = a => (organelles(a) & O_RIGID ? 12 : 1) + (geneB(a) & B_THICK ? 1.0 : 0) + (geneB(a) & B_HARDY ? 0.35 : 0);
 const divThresh = (a, P) => P.lifeDiv * (geneB(a) & B_FECUND ? 0.78 : 1);
 // Rank-four compatibility: jelly, mud, prey, chemical fuel. The organelle clause
 // contributes two binary receptors; no per-substance decision network.
@@ -237,7 +240,7 @@ function receptorGate(receptors, a, b) {
   if (channel === 1) return 1;
   if (channel === 2) return 0.35;
   if (channel === 8) return (b & A_LIT) ? 0 : 0.85;
-  return channel === 4 && genome(a) !== genome(b) && vitOf(a) + 25 > vitOf(b) * membraneStrength(b) * 0.60 ? 0.75 : 0;
+  return channel === 4 && !(organelles(b)&O_RIGID) && genome(a) !== genome(b) && vitOf(a) + 25 > vitOf(b) * membraneStrength(b) * 0.60 ? 0.75 : 0;
 }
 function lifeGate(a, b) { return receptorGate(lifeReceptors(a), a, b); }
 // Cache the rank-two surface feature in eight unused PID bits; no new GPU buffer.
@@ -269,18 +272,18 @@ function bioHash(a, b) {
 }
 // About 70% of new strains inherit the stronger membrane stroke.
 function randomGenome(random = Math.random) {
-  const g = Math.floor(random() * 65536) & 0xBA1F;
-  return g | (random() < 0.70 ? 0x0100 : 0) | (random() < 0.30 ? 0x0400 : 0) | (random() < 0.25 ? 0x4000 : 0) | (random() < 0.25 ? 0x0020 : 0) | (random() < 0.20 ? 0x0040 : 0) | (random() < 0.30 ? 0x0080 : 0);
+  const g = Math.floor(random() * 65536) & 0xBA01;
+  return g | (random() < 0.70 ? 0x0100 : 0) | (random() < 0.30 ? 0x0400 : 0) | (random() < 0.25 ? 0x4000 : 0) | (random() < 0.25 ? 0x0020 : 0) | (random() < 0.20 ? 0x0040 : 0) | (random() < 0.30 ? 0x0080 : 0) | (random() < 0.06 ? 2 : 0) | (random() < 0.05 ? 4 : 0) | (random() < 0.04 ? 8 : 0) | (random() < 0.05 ? 16 : 0);
 }
 // A strain has a fixed body-wave axis. The motor changes bond rest lengths, never adds thrust.
 const headingCache = new Map();
 function strainHeading(g) {
   if (headingCache.has(g)) return headingCache.get(g);
-  const angle = (g & 31) * 2.39996323;
+  const angle = ((g ^ (g >>> 5) ^ (g >>> 10)) & 31) * 2.39996323;
   const h = [Math.cos(angle), Math.sin(angle)]; headingCache.set(g, h); return h;
 }
 function membraneRest(rest, g, x, y, nx, ny, clock, amplitude, headingX = 0, headingY = 0) {
-  if (amplitude === 0) return rest;
+  if (amplitude === 0 || (g & 18)) return rest;
   const motor = g & 0x0100 ? 1 : 0.55;
   const fallback = strainHeading(g), len = Math.hypot(headingX, headingY);
   const hx = len > 0.1 ? headingX / len : fallback[0], hy = len > 0.1 ? headingY / len : fallback[1];
@@ -310,6 +313,7 @@ GRAIN.push(0); MU_S.push(0); MU_K.push(0); COH.push(0); TENS.push(0);
 // Meltdown: dense, viscous elastic gel. It never ages, burns away, freezes, or becomes food.
 MASS.push(80); SIGMA.push(0.35); XSPH.push(0.20); WALLFRIC.push(0.9);
 GRAIN.push(0); MU_S.push(0); MU_K.push(0); COH.push(0); TENS.push(0);
+for(const v of [[0.8,.12,.04,.2],[0.35,.06,0,.4]]){MASS.push(v[0]);SIGMA.push(v[1]);XSPH.push(v[2]);WALLFRIC.push(v[3]);GRAIN.push(0);MU_S.push(0);MU_K.push(0);COH.push(0);TENS.push(0);}
 const isGel = t => t === T_JELLO || t === T_MELTDOWN;
 const particleMass = a => ((a & A_FROZEN) && ((a & TM) === T_LIFE || (a & TM) === T_CARGO) ? 50 : MASS[a & TM]) * ((a & TM) === T_CARGO ? Math.max(0.12, cargoFraction(a)) : 1);
 const isFluid = t => t === 1 || t === 2 || t === 5 || t === 7 || t === 10 || t === 12 || t === 16 || t === 17;
@@ -390,7 +394,7 @@ class Engine {
     if (this.n >= this.maxP || this.isWall(x, y)) return;
     const i = this.n++; this.foodDirty = true;
     this.px[i] = x + vx; this.py[i] = y + vy; this.qx[i] = x; this.qy[i] = y;
-    this.attr[i] = type === T_LIFE ? mkLife(gene, this.P.lifeStart) | A_FRESH
+    this.attr[i] = type === T_LIFE ? mkLife(gene, this.P.lifeStart) | A_FRESH | (gene&0x10000?A_APPEND:0)
                                    : type | A_FRESH | ((Math.random() * 255) | 0) << 8;
     this.pid[i] = this.nextId = (this.nextId + 1) & ID_MASK;
     this.anchor[i * 2] = x; this.anchor[i * 2 + 1] = y;
@@ -414,7 +418,7 @@ class Engine {
         cx = cx < 0 ? 0 : cx >= GW ? GW - 1 : cx; cy = cy < 0 ? 0 : cy >= GH ? GH - 1 : cy;
         c = cy * GW + cx;
         const t = a & TM;
-        let active = t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_LIFE || t === T_CARGO || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
+        let active = t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_LIFE || t === T_CARGO || t === T_ACID || t === T_SEED || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
         if (!active) {
           if (recheck) {   // settled = small *net* drift over the window; jitter cancels itself out
             const d = Math.hypot(px[i] - this.anchor[i * 2], py[i] - this.anchor[i * 2 + 1]);
@@ -573,14 +577,14 @@ class Engine {
     // Cache it once; it is geometry-driven and does not depend on the surrounding material.
     for (let i=0;i<this.n;i++) {
       const out=i*2,a=attr[i];this.lifeSlip[out]=0;this.lifeSlip[out+1]=0;
-      if((a&TM)!==T_LIFE||(a&A_FROZEN)||!this.P.lifeSwim)continue;
+      if((a&TM)!==T_LIFE||(a&A_FROZEN)||!this.P.lifeSwim||(organelles(a)&O_PLANT)||((organelles(a)&O_RIGID)&&!(a&A_APPEND)))continue;
       const nx=this.wet[i],ny=this.react[i],len=Math.hypot(nx,ny);
       if(len<0.05)continue;
       const hx=this.lifeNav[out],hy=this.lifeNav[out+1],along=(hx*nx+hy*ny)/(len*len);
       const phase=1.35*(px[i]*hx+py[i]*hy)-this.lifeClock*0.09;
       const speed=this.P.lifeSwim*(genome(a)&0x0100?1:0.8)*(0.65+0.35*Math.sin(phase))*Math.min(1,len/0.5);
       this.lifeSlip[out]=-(hx-nx*along)*speed;this.lifeSlip[out+1]=-(hy-ny*along)*speed;
-      if(organelles(a)&O_ROLL){const roll=this.P.lifeSwim*0.90*(hx>=0?1:-1)*Math.min(1,len/0.5)/len;
+      if((organelles(a)&O_ROLL)&&!(organelles(a)&O_PLANT)){const roll=this.P.lifeSwim*0.90*(hx>=0?1:-1)*Math.min(1,len/0.5)/len;
         this.lifeSlip[out]+=ny*roll;this.lifeSlip[out+1]-=nx*roll;}
 
     }
@@ -603,7 +607,7 @@ class Engine {
       // |kin normal| is ~0 deep inside a body and large on its skin, so this is literally
       // "how much of a surface am I" - cohesion rides on it and the interior stays a plain fluid
       const surfI = li_ ? lifeSurface(this.pid[i]) : 0;
-      const strength = li_ ? membraneStrength(ai) : 1, receptors = lifeReceptors(ai);
+      const strength = li_ ? Math.min(3,membraneStrength(ai)) : 1, receptors = lifeReceptors(ai);
       const cohesion0 = P.coh[T_LIFE] * strength * (0.25 + 0.75 * surfI);
       const cohesion1 = P.coh[T_LIFE] * strength * 0.75;
       const curvature = P.tens[T_LIFE] * strength * 2;
@@ -620,6 +624,7 @@ class Engine {
           const aj = attr[j], tj = aj & TM;
           // Thermophiles alone survive direct fire/lava contact, including exact overlap.
           if (li_ && !(organelles(ai) & O_THERMO) && (tj === T_FIRE || tj === T_LAVA)) fatalContact = true;
+          if(li_ && tj===T_ACID && !(organelles(ai)&O_ACID))fatalContact=true;
           if (d2 < 1e-12) continue;
           const r = Math.sqrt(d2); rx /= r; ry /= r;
           const o = 1 - r;
@@ -649,11 +654,11 @@ class Engine {
           let D = 0;
           if (li_ || lj) {
             const kin = li_ && lj && genome(aj) === gme;
-            const hornI = li_ && lj && !kin && !(ai & A_FROZEN) && (organelles(ai) & O_PRED) &&
+            const hornI = li_ && lj && !kin && !(organelles(aj)&O_RIGID) && !(ai & A_FROZEN) && (organelles(ai) & O_PRED) &&
               this.lifeNav[i*2] * rx + this.lifeNav[i*2+1] * ry > 0.25;
-            const hornJ = li_ && lj && !kin && !(aj & A_FROZEN) && (organelles(aj) & O_PRED) &&
+            const hornJ = li_ && lj && !kin && !(organelles(ai)&O_RIGID) && !(aj & A_FROZEN) && (organelles(aj) & O_PRED) &&
               -this.lifeNav[j*2] * rx - this.lifeNav[j*2+1] * ry > 0.25;
-            if (hornJ) {
+            if (hornJ && !(organelles(ai)&O_RIGID)) {
               const depth = 0.44 / Math.sqrt(strength), closing = (vix - vjx) * rx + (viy - vjy) * ry;
               fatalContact ||= r < depth && (closing > 0.008 || r < depth * 0.65);
             }
@@ -670,8 +675,8 @@ class Engine {
               else if (tj === T_ICE || tj === T_SNOW) env -= o;
               else if (lj && (aj & A_FROZEN)) env -= o * 0.35;
               else if (tj === T_OIL && (aj & A_LIT)) env += o;
-              if (tj === T_WATER || tj === T_OIL) medium += o * o * (tj === T_OIL ? (geneA(ai) & 8 ? 1.05 : 0.65) : 1);
-              if (hornJ && r < 0.62) drain += o * 3 / strength;
+              if (tj === T_WATER || tj === T_OIL) medium += o * o * (tj === T_OIL ? 0.85 : 1);
+              if (hornJ && !(organelles(ai)&O_RIGID) && r < 0.62) drain += o * 3 / strength;
             }
             // Both endpoints choose the same closest compatible partner. A later snapshot pass
             // commits only mutual choices: one prey, one receiver, one finite energy transfer.
@@ -992,7 +997,8 @@ class Engine {
       }
       if (t === T_LIFE && !consumed) {
         const gb = geneB(a), env = this.lifeEnv[i], medium = this.lifeMedium[i], org = organelles(a);
-        value -= P.lifeCost * (1 + (organelles(a) & O_PRED ? 0.5 : 0) + (1 - medium) * 0.5);
+        value += org&O_PLANT ? (medium<0.25?0.12:0.015) : 0;
+        value -= (org&O_PLANT?0:P.lifeCost) * (1 + (organelles(a) & O_PRED ? 0.5 : 0) + (1 - medium) * 0.5);
         value -= this.lifeBite[i] * P.lifeBite;
         if(env>0 && (org&O_THERMO)) value += THERMO_FOOD*Math.min(env,4);
         else value -= env > 0 ? env * P.lifeHeat / membraneStrength(a) * (gb & B_HARDY ? 0.2 : 1) : -env * P.lifeCold * (gb & B_CRYO ? 0.15 : 1);
@@ -1111,7 +1117,7 @@ class Engine {
       if (this.isWall(ox, oy) || !(Math.abs(x) + Math.abs(y) < 1e6)) { attr[i] &= ~TM; continue; }
       let vx = x - ox, vy = y - oy;
       const vl = Math.hypot(vx, vy); if (vl > P.maxStep) { vx *= P.maxStep / vl; vy *= P.maxStep / vl; x = ox + vx; y = oy + vy; }
-      if(t===T_LIFE && !(a&A_FROZEN) && (organelles(a)&O_ROLL)) {
+      if(t===T_LIFE && !(a&A_FROZEN) && (organelles(a)&O_ROLL)&&!(organelles(a)&O_PLANT)) {
         const roll=P.lifeSwim*0.90*(this.lifeNav[i*2]>=0?1:-1)*0.18;
         if(this.isWall(ox,oy+0.52)){vx+=roll;} if(this.isWall(ox,oy-0.52)){vx-=roll;}
         if(this.isWall(ox+0.52,oy)){vy-=roll;} if(this.isWall(ox-0.52,oy)){vy+=roll;}
@@ -1193,7 +1199,7 @@ class Engine {
       this.px[i] = x + vx; this.py[i] = y + vy;
     }
   }
-  step(tool) { this.lifeClock++; this.blastIn = this.blastOut; this.blastOut = []; this.blastSeen += this.blastIn.length / 2; this.sort(); this.wakePass(tool); this.density(); this.senseFood(); this.bondPass(); this.relax(); for (let k = 0; k < this.P.citers; k++) this.contacts(); this.friction(); this.biology(); this.finalize(tool); }
+  step(tool) { this.lifeClock++; this.blastIn = this.blastOut; this.blastOut = []; this.blastSeen += this.blastIn.length / 2; this.sort(); this.wakePass(tool); this.density(); this.senseFood(); this.bondPass(); this.relax(); for (let k = 0; k < this.P.citers; k++) this.contacts(); this.friction(); this.biology(); this.finalize(tool); this.rareStep(); }
 }
 
 // ---------- anchored machines and clocked circuits ----------
@@ -1291,7 +1297,7 @@ class Stickman {
       const lo=Math.max(0,Math.floor(this.x-2)),hi=Math.min(e.GW-1,Math.floor(this.x+2));
       for(let j=e.cellStart[yy*e.GW+lo];j<e.cellStart[yy*e.GW+hi+1];j++){
         const t=e.attr[j]&TM;if(!t)continue;const dx=e.qx[j]-this.x,dy=e.qy[j]-cy;
-        if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN)&&Math.abs(dx)<1.15&&Math.abs(dy)<2.4){this.die();return;}
+        if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN||t===T_ACID)&&Math.abs(dx)<1.15&&Math.abs(dy)<2.4){this.die();return;}
         near.push(j);if(Math.abs(dx)<1.3&&Math.abs(dy)<2.5&&isFluid(t))wet++;
       }
     }
@@ -1309,7 +1315,7 @@ class Stickman {
       else{const d=(dx>=0?1:-1)*Math.min(ox,.15);if(!this.blocked(x+d,y,wall))x+=d;this.vx*=.8;}
     }
     this.x=x;this.y=y;this.phase+=Math.abs(this.vx)*.65;
-    for(const j of near){const t=e.attr[j]&TM;if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN)&&Math.abs(e.qx[j]-x)<1.15&&Math.abs(e.qy[j]-(y-2.1))<2.4){this.die();return;}}
+    for(const j of near){const t=e.attr[j]&TM;if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN||t===T_ACID)&&Math.abs(e.qx[j]-x)<1.15&&Math.abs(e.qy[j]-(y-2.1))<2.4){this.die();return;}}
     // The player pushes nearby material through ordinary particle velocity, never writes walls.
     for(const j of near){const a=e.attr[j],t=a&TM;if(t===T_ICE||(a&A_FROZEN))continue;
       const dx=e.qx[j]-x,dy=e.qy[j]-(y-2.1),ox=1.03-Math.abs(dx),oy=2.28-Math.abs(dy);if(ox<=0||oy<=0)continue;
@@ -1331,6 +1337,75 @@ class Stickman {
     c.fillStyle='#fff';c.strokeStyle='#101722';c.lineWidth=.16;c.fillRect(-.85,-4.2+crouch,1.7,1.5);c.strokeRect(-.85,-4.2+crouch,1.7,1.5);c.restore();
   }
 }
+
+// Rare anatomy is keyed by stable particle ID. Colony reductions are linear, never all-pairs.
+Engine.prototype.rareStep=function(){
+ if(!this.rareMeta)this.rareMeta=new Map();
+ const e=this,P=e.P;
+ if(!e.attr.subarray(0,e.n).some(a=>(a&TM)===19||(a&TM)===20||((a&TM)===16&&(organelles(a)&480))))return;
+ const groups=new Map(),emit=[],snapshot=e.rareSnapshot||(e.rareSnapshot=[]);
+ for(let i=0;i<e.n;i++){const q=snapshot[i]||(snapshot[i]=[0,0,0,0,0]);q[0]=e.qx[i];q[1]=e.qy[i];q[2]=e.px[i]-e.qx[i];q[3]=e.py[i]-e.qy[i];q[4]=e.attr[i];}
+ const request=(x,y,vx,vy,a)=>{if(emit.length<128&&!e.isWall(x,y))emit.push([x,y,vx,vy,a]);};
+ for(let i=0;i<e.n;i++){
+  const q=snapshot[i],a=q[4],t=a&TM,g=genome(a),org=organelles(a),id=e.pid[i]&PID_MASK;
+  if(t!==T_ACID&&t!==T_SEED&&!(t===T_LIFE&&(org&480))&&![3,8,11,12].includes(t))continue;
+  let m=e.rareMeta.get(id);if(!m||m.g!==g){m={g,rx:q[0],ry:q[1],x:q[0],y:q[1],age:0,root:false};e.rareMeta.set(id,m);}m.age++;
+  if(t===T_ACID){const age=(a>>>16)+1;e.attr[i]=age>360?T_WATER:((a&65535)|(age<<16));continue;}
+  if(a&A_FROZEN)continue;
+  let wet=0,solid=e.isWall(q[0],q[1]+.55)||e.isWall(q[0]-.55,q[1])||e.isWall(q[0]+.55,q[1]),svx=0,svy=0,root=-1,enemy=-1,best=25;
+  const rad=t===T_LIFE&&(org&O_ACID)&&id%8===0&&e.lifeClock%120===id%120?5:1;
+  for(let y=Math.max(0,Math.floor(q[1]-rad));y<=Math.min(e.GH-1,Math.floor(q[1]+rad));y++){
+   const lo=Math.max(0,Math.floor(q[0]-rad)),hi=Math.min(e.GW-1,Math.floor(q[0]+rad));
+   for(let j=e.cellStart[y*e.GW+lo];j<e.cellStart[y*e.GW+hi+1];j++){
+    if(j===i)continue;const b=snapshot[j];if(!b)continue;const bt=b[4]&TM,dx=b[0]-q[0],dy=b[1]-q[1],d=dx*dx+dy*dy;
+    if(d<1){if(bt===1||bt===2)wet++;if(isGran(bt)&&d<.75){solid=true;svx=b[2];svy=b[3];}
+     if(bt===T_LIFE&&(organelles(b[4])&O_PLANT)&&!(b[4]&A_FROZEN)&&dy<.15)root=j;}
+    if(bt===T_LIFE&&genome(b[4])!==g&&(organelles(b[4])&O_PRED)&&d<best){best=d;enemy=j;}
+   }
+  }
+  if([3,8,11,12].includes(t)){if(root>=0&&wet<3&&bioHash(id+17,e.lifeClock)<.0008){e.attr[i]=mkLife(genome(snapshot[root][4]),120)|A_APPEND;e.px[i]=e.qx[i];e.py[i]=e.qy[i];}continue;}
+  if(t===T_SEED){if(m.age>90&&solid&&wet<3){e.attr[i]=mkLife(g,180);for(let k=-1;k<=1;k++)request(q[0]+k*.4,q[1]-.45,0,0,mkLife(g,150));}else if(m.age>2400)e.attr[i]=deadJelly(a);continue;}
+  if(org&O_PLANT){
+   if(solid&&wet<3)m.root=true;
+   if(Math.hypot(q[2],q[3])>.20)m.root=false;
+   if(m.root){e.qx[i]=m.x+svx;e.qy[i]=m.y+svy;e.px[i]=e.qx[i];e.py[i]=e.qy[i];}m.x=e.qx[i];m.y=e.qy[i];
+   if(m.root&&wet<3&&bioHash(id+541,e.lifeClock)<.00012)request(q[0],q[1]-.7,(bioHash(id,2)-.5)*.015,-.025,T_JELLO);
+   if(m.root&&wet<3&&m.age>240&&bioHash(id+771,e.lifeClock)<.00005)request(q[0],q[1]-.8,(bioHash(id,e.lifeClock)-.5)*.26,-.20,(mkLife(g,0)&~TM)|T_SEED);
+  }
+  if(enemy>=0&&rad===5){const b=snapshot[enemy],len=Math.sqrt(best),dx=(b[0]-q[0])/Math.max(.1,len),dy=(b[1]-q[1])/Math.max(.1,len);for(let k=-1;k<=1;k++)request(q[0]+dx*.8,q[1]+dy*.8,dx*.17-dy*k*.035,dy*.17+dx*k*.035,T_ACID);}
+  if((org&(O_RIGID|O_JELLY))&&!(org&O_PLANT)){if(!groups.has(g))groups.set(g,[]);groups.get(g).push(i);}
+ }
+ for(const [g,list]of groups){
+  const core=list.filter(i=>!(snapshot[i][4]&A_APPEND));if(!core.length)continue;
+  let cx=0,cy=0,rx=0,ry=0,vx=0,vy=0,ox=0,oy=0;
+  for(const i of core){const q=snapshot[i],m=e.rareMeta.get(e.pid[i]&PID_MASK);cx+=q[0];cy+=q[1];rx+=m.rx;ry+=m.ry;vx+=q[2];vy+=q[3];ox+=m.x;oy+=m.y;}
+  const n=core.length;cx/=n;cy/=n;rx/=n;ry/=n;vx/=n;vy/=n;ox/=n;oy/=n;
+  if(g&2){vx=(cx-ox)*P.lifeDamp+P.gx;vy=(cy-oy)*P.lifeDamp+P.gy;const speed=Math.hypot(vx,vy);if(speed>P.maxStep){vx*=P.maxStep/speed;vy*=P.maxStep/speed;}}
+  let dot=0,cross=0;for(const i of core){const q=snapshot[i],m=e.rareMeta.get(e.pid[i]&PID_MASK),x=m.rx-rx,y=m.ry-ry;dot+=x*(q[0]-cx)+y*(q[1]-cy);cross+=x*(q[1]-cy)-y*(q[0]-cx);}
+  const angle=Math.atan2(cross,dot),co=Math.cos(angle),si=Math.sin(angle),rigid=!!(g&2),targets=[];
+  let blocked=false;
+  for(const i of list){const q=snapshot[i],m=e.rareMeta.get(e.pid[i]&PID_MASK),append=!!(q[4]&A_APPEND);let x=m.rx-rx,y=m.ry-ry;
+   if(append){x+=.28*Math.sin(m.ry*1.8-e.lifeClock*.09);}
+   else if(!rigid){const pulse=Math.sin(e.lifeClock*.055);x*=1+.10*pulse;y*=1-.06*pulse;}
+   const tx=cx+co*x-si*y,ty=cy+si*x+co*y;targets.push([i,tx,ty,append]);if(!append&&e.isWall(tx,ty))blocked=true;
+  }
+  if(list.length===core.length&&core.length>=4&&core.every(i=>{const m=e.rareMeta.get(e.pid[i]&PID_MASK);return m.age>30&&m.age>(m.nextBud||0);})){
+   const radius=Math.max(1,...core.map(i=>{const m=e.rareMeta.get(e.pid[i]&PID_MASK);return Math.hypot(m.rx-rx,m.ry-ry);}));
+   if(g&2)for(let k=1;k<=12;k++)request(cx-radius-k*.38,cy+Math.sin(k*.5)*.18,vx,vy,mkLife(g,120)|A_APPEND);
+   if(g&4)for(let strand=-1;strand<=1;strand++)for(let k=1;k<=8;k++)request(cx+strand*radius*.6,cy+radius*.3+k*.39,vx,vy,mkLife(g,120)|A_APPEND);
+   for(const i of core){const m=e.rareMeta.get(e.pid[i]&PID_MASK);m.nextBud=m.age+240;}
+  }
+  for(const [i,tx,ty,append]of targets){const m=e.rareMeta.get(e.pid[i]&PID_MASK),q=snapshot[i];let x=tx,y=ty;
+   if(blocked&&!append){x=m.x;y=m.y;}
+   if(append||!rigid){const dx=x-q[0],dy=y-q[1],scale=Math.min(append?.3:.18,.15/Math.max(Math.hypot(dx,dy),1e-6));x=q[0]+dx*scale;y=q[1]+dy*scale;}
+   if(e.isWall(x,y)){x=q[0];y=q[1];}
+   e.qx[i]=x;e.qy[i]=y;e.px[i]=x+(blocked?0:vx);e.py[i]=y+(blocked?0:vy);m.x=x;m.y=y;
+  }
+ }
+ for(const [x,y,vx,vy,a]of emit){const n=e.n;e.add(x,y,a&TM,vx,vy,genome(a));if(e.n>n)e.attr[n]=a|A_FRESH;}
+ // Bound metadata by live IDs. No orphan growth after death or repeated clearing.
+ if(e.lifeClock%240===0){const alive=new Set(Array.from(e.pid.subarray(0,e.n),p=>p&PID_MASK));for(const id of e.rareMeta.keys())if(!alive.has(id))e.rareMeta.delete(id);}
+};
 
 // ---------- WGSL ----------
 const WG = 256;
@@ -1397,16 +1472,16 @@ fn isGran(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || 
 //   bits 8-15 appearance, 16-23 vitality; top byte packs behaviour + organelle clauses
 const B_MOTILE = 1u; const B_BUOY = 2u; const B_HARDY = 8u;
 const B_CRYO = 16u; const B_THICK = 32u; const B_FECUND = 128u;
-const O_CHEM = 1u; const O_PRED = 2u; const O_THERMO = 4u; const O_RADIO = 8u; const O_ROLL = 16u;
+const O_CHEM = 1u; const O_PRED = 2u; const O_THERMO = 4u; const O_RADIO = 8u; const O_ROLL = 16u; const O_RIGID = 32u; const O_JELLY = 64u; const O_ACID = 128u; const O_PLANT = 256u; const A_APPEND = 64u;
 const THERMO_FOOD = ${THERMO_FOOD}; const THERMO_SHED = ${THERMO_SHED}; const RADIO_RESIST = ${RADIO_RESIST};
-fn organelles(a: u32) -> u32 { return ((a >> 26u) & 1u) | (((a >> 30u) & 1u) << 1u) | (((a >> 13u) & 7u) << 2u); }
+fn organelles(a: u32) -> u32 { return ((a >> 26u) & 1u) | (((a >> 30u) & 1u) << 1u) | (((a >> 13u) & 7u) << 2u) | (((a >> 9u) & 15u) << 5u); }
 fn geneB(a: u32) -> u32 { return (a >> 24u) & 0xBBu; }
 fn genome(a: u32) -> u32 { return ((a >> 8u) & 255u) | (((a >> 24u) & 255u) << 8u); }
 fn vitOf(a: u32) -> u32 { return (a >> 16u) & 255u; }
 fn mkLife(g: u32, v: u32) -> u32 { return 16u | ((g & 255u) << 8u) | (min(v, 250u) << 16u) | (((g >> 8u) & 255u) << 24u); }
 fn divThresh(a: u32) -> f32 { return select(P.lifeDiv, P.lifeDiv * 0.78, (geneB(a) & B_FECUND) != 0u); }
 fn membraneStrength(a: u32) -> f32 {
-  return 1.0 + select(0.0, 1.0, (geneB(a) & B_THICK) != 0u) + select(0.0, 0.35, (geneB(a) & B_HARDY) != 0u);
+  return select(1.0,12.0,(organelles(a)&O_RIGID)!=0u) + select(0.0, 1.0, (geneB(a) & B_THICK) != 0u) + select(0.0, 0.35, (geneB(a) & B_HARDY) != 0u);
 }
 fn lifeReceptors(a: u32) -> u32 {
   if ((a & TM) != 16u || (a & A_FROZEN) != 0u) { return 0u; }
@@ -1422,7 +1497,7 @@ fn receptorGate(receptors: u32, a: u32, b: u32) -> f32 {
   if (channel == 1u) { return 1.0; }
   if (channel == 2u) { return 0.35; }
   if (channel == 8u) { return select(0.85, 0.0, (b & A_LIT) != 0u); }
-  if (channel == 4u && genome(a) != genome(b) && f32(vitOf(a)) + 25.0 > f32(vitOf(b)) * membraneStrength(b) * 0.60) { return 0.75; }
+  if (channel == 4u && (organelles(b)&O_RIGID)==0u && genome(a) != genome(b) && f32(vitOf(a)) + 25.0 > f32(vitOf(b)) * membraneStrength(b) * 0.60) { return 0.75; }
   return 0.0;
 }
 fn lifeGate(a: u32, b: u32) -> f32 { return receptorGate(lifeReceptors(a), a, b); }
@@ -1463,10 +1538,10 @@ fn pcg(v: u32) -> u32 { let s = v * 747796405u + 2891336453u; let w = ((s >> ((s
 fn rnd(a: u32, b: u32) -> f32 { return f32(pcg(a ^ pcg(b)) & 0xFFFFFFu) / 16777216.0; }
 // Traveling membrane strain is an internal, equal-and-opposite bond actuation.
 fn membraneRest(rest: f32, g: u32, midpoint: vec2f, n: vec2f, aim: vec2f) -> f32 {
-  if (P.lifeSwim == 0.0) { return rest; }
+  if (P.lifeSwim == 0.0 || (g & 18u)!=0u) { return rest; }
   let motor = select(0.55, 1.0, (g & 0x0100u) != 0u);
   var h=aim/max(length(aim),1e-6);
-  if(length(aim)<=0.1){let angle=f32(g&31u)*2.39996323;h=vec2f(cos(angle),sin(angle));}
+  if(length(aim)<=0.1){let angle=f32((g^(g>>5u)^(g>>10u))&31u)*2.39996323;h=vec2f(cos(angle),sin(angle));}
   let along = dot(n, h);
   let phase = 1.35 * dot(midpoint, h) - P.lifeClock * 0.09;
   return rest * (1.0 + P.lifeSwim * 0.2 * motor * along * along * sin(phase));
@@ -1474,12 +1549,12 @@ fn membraneRest(rest: f32, g: u32, midpoint: vec2f, n: vec2f, aim: vec2f) -> f32
 // Local membrane surface motion: no fluid sensing or center-of-mass thrust.
 fn membraneSlip(a: u32, p: vec2f, normal: vec2f, h: vec2f) -> vec2f {
   let len=length(normal);
-  if ((a & A_FROZEN) != 0u || P.lifeSwim == 0.0 || len < 0.05) { return vec2f(0.0); }
+  if ((a & A_FROZEN) != 0u || (organelles(a)&O_PLANT)!=0u || ((organelles(a)&O_RIGID)!=0u && (a&A_APPEND)==0u) || P.lifeSwim == 0.0 || len < 0.05) { return vec2f(0.0); }
   let tangent=h-normal*(dot(h,normal)/(len*len));
   let phase=1.35*dot(p,h)-P.lifeClock*0.09;
   let speed=P.lifeSwim*select(0.8,1.0,(genome(a)&0x0100u)!=0u)*(0.65+0.35*sin(phase))*min(1.0,len/0.5);
   var slip=-tangent*speed;
-  if((organelles(a)&O_ROLL)!=0u){slip+=vec2f(normal.y,-normal.x)*(P.lifeSwim*0.90*select(-1.0,1.0,h.x>=0.0)*min(1.0,len/0.5)/len);}
+  if((organelles(a)&O_ROLL)!=0u && (organelles(a)&O_PLANT)==0u){slip+=vec2f(normal.y,-normal.x)*(P.lifeSwim*0.90*select(-1.0,1.0,h.x>=0.0)*min(1.0,len/0.5)/len);}
   return slip;
 }
 fn navSlot(i: u32) -> u32 { return 0x100000u + ((P.gw+3u)/4u)*((P.gh+3u)/4u)*20u + i*3u; }
@@ -1510,7 +1585,7 @@ const SH_COUNT = HDR + /* wgsl */`
   if (t != 0u) {
     let s = st[i];
     let q = cellXY(s.xy); c = u32(q.y) * P.gw + u32(q.x);
-    var awakeNow = t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 16u || t == 17u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
+    var awakeNow = t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 16u || t == 17u || t == 19u || t == 20u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
     if (!awakeNow) {
       let an = anchor[i];
       if (f32(P.frame) - an.z >= f32(P.window)) {   // settled = small *net* drift over the window; jitter cancels out
@@ -1733,7 +1808,7 @@ ${SPAN}
     dens[i2] = vec4f(r, rn, c0, c1);
     if (ti == 16u) {
       pid[i] = withSurface(pid[i], length(nv) / P.lifeSurf);
-      let angle=f32(genome(att[i])&31u)*2.39996323;let fallback=vec2f(cos(angle),sin(angle));
+      let angle=f32((genome(att[i])^(genome(att[i])>>5u)^(genome(att[i])>>10u))&31u)*2.39996323;let fallback=vec2f(cos(angle),sin(angle));
       let h=cachedFoodHeading(att[i],st[i].xy,lifeSurface(pid[i]),fallback);
       let slot=navSlot(i);idx[slot]=bitcast<u32>(h.x);idx[slot+1u]=bitcast<u32>(h.y);
       idx[slot+2u]=pack2x16float(membraneSlip(att[i],st[i].xy,nv,h));
@@ -1867,7 +1942,7 @@ var<workgroup> ltot: u32;
     dens[i] = vec4f(r, rn, c0, c1);
     if (ti == 16u) {
       pid[i] = withSurface(pid[i], length(nv) / P.lifeSurf);
-      let angle=f32(genome(att[i])&31u)*2.39996323;let fallback=vec2f(cos(angle),sin(angle));
+      let angle=f32((genome(att[i])^(genome(att[i])>>5u)^(genome(att[i])>>10u))&31u)*2.39996323;let fallback=vec2f(cos(angle),sin(angle));
       let h=cachedFoodHeading(att[i],st[i].xy,lifeSurface(pid[i]),fallback);
       let slot=navSlot(i);idx[slot]=bitcast<u32>(h.x);idx[slot+1u]=bitcast<u32>(h.y);
       idx[slot+2u]=pack2x16float(membraneSlip(att[i],st[i].xy,nv,h));
@@ -1969,7 +2044,7 @@ ${SPAN}
   let gb = select(0u, geneB(att[i]), li_);
   let edible = ti == 6u || ti == 12u || ti == 17u || ti == 2u || ti == 5u || li_;
   let surfI = select(0.0, lifeSurface(pid[i]), li_);
-  let strength = select(1.0, membraneStrength(att[i]), li_); let receptors = lifeReceptors(att[i]);
+  let strength = select(1.0, min(3.0,membraneStrength(att[i])), li_); let receptors = lifeReceptors(att[i]);
   let cohesion0 = P.pb[16].w * strength * (0.25 + 0.75 * surfI);
   let cohesion1 = P.pb[16].w * strength * 0.75;
   let curvature = P.pc[16].x * strength * 2.0;
@@ -1987,6 +2062,7 @@ ${SPAN}
       if (d2 >= 1.0) { continue; }
       let aj = att[j]; let tj = aj & TM; let jg = j;
       if (li_ && (organelles(att[i]) & O_THERMO) == 0u && (tj == 4u || tj == 7u)) { fatalContact = true; }
+      if(li_ && tj==19u && (organelles(att[i])&O_ACID)==0u){fatalContact=true;}
       if (d2 < 1e-12) { continue; }
       let rl = sqrt(d2); let n = rv / rl; let o = 1.0 - rl;
       // Both endpoints use the same cached skin velocities and reciprocal mass weights.
@@ -2017,9 +2093,9 @@ ${SPAN}
         let lj = tj == 16u;
         let dj = dens[j];
         let kin = li_ && lj && genome(aj) == gme;
-        let hornI = li_ && lj && !kin && (att[i] & A_FROZEN) == 0u && (organelles(att[i]) & O_PRED) != 0u && dot(navHeading(i), n) > 0.25;
-        let hornJ = li_ && lj && !kin && (aj & A_FROZEN) == 0u && (organelles(aj) & O_PRED) != 0u && dot(navHeading(jg), -n) > 0.25;
-        if (hornJ) {
+        let hornI = li_ && lj && !kin && (organelles(aj)&O_RIGID)==0u && (att[i] & A_FROZEN) == 0u && (organelles(att[i]) & O_PRED) != 0u && dot(navHeading(i), n) > 0.25;
+        let hornJ = li_ && lj && !kin && (organelles(att[i])&O_RIGID)==0u && (aj & A_FROZEN) == 0u && (organelles(aj) & O_PRED) != 0u && dot(navHeading(jg), -n) > 0.25;
+        if (hornJ && (organelles(att[i])&O_RIGID)==0u) {
           let depth = 0.44 / sqrt(strength); let closing = dot(v - vj, n);
           fatalContact = fatalContact || (rl < depth && (closing > 0.008 || rl < depth * 0.65));
         }
@@ -2265,7 +2341,7 @@ var<workgroup> ltot: u32;
     let gb = select(0u, geneB(att[i]), li_);
     let edible = ti == 6u || ti == 12u || ti == 17u || ti == 2u || ti == 5u || li_;
     let surfI = select(0.0, lifeSurface(pid[i]), li_);
-  let strength = select(1.0, membraneStrength(att[i]), li_); let receptors = lifeReceptors(att[i]);
+  let strength = select(1.0, min(3.0,membraneStrength(att[i])), li_); let receptors = lifeReceptors(att[i]);
   let cohesion0 = P.pb[16].w * strength * (0.25 + 0.75 * surfI);
   let cohesion1 = P.pb[16].w * strength * 0.75;
   let curvature = P.pc[16].x * strength * 2.0;
@@ -2294,6 +2370,7 @@ var<workgroup> ltot: u32;
       if (d2 >= 1.0) { continue; }
         let aj = AJ; let tj = aj & TM; let jg = select(j, rowA[rr] + j - rowBase[rr], ok);
       if (li_ && (organelles(att[i]) & O_THERMO) == 0u && (tj == 4u || tj == 7u)) { fatalContact = true; }
+      if(li_ && tj==19u && (organelles(att[i])&O_ACID)==0u){fatalContact=true;}
       if (d2 < 1e-12) { continue; }
       let rl = sqrt(d2); let n = rv / rl; let o = 1.0 - rl;
       // Both endpoints use the same cached skin velocities and reciprocal mass weights.
@@ -2324,9 +2401,9 @@ var<workgroup> ltot: u32;
         let lj = tj == 16u;
         let dj = DJ;
         let kin = li_ && lj && genome(aj) == gme;
-        let hornI = li_ && lj && !kin && (att[i] & A_FROZEN) == 0u && (organelles(att[i]) & O_PRED) != 0u && dot(navHeading(i), n) > 0.25;
-        let hornJ = li_ && lj && !kin && (aj & A_FROZEN) == 0u && (organelles(aj) & O_PRED) != 0u && dot(navHeading(jg), -n) > 0.25;
-        if (hornJ) {
+        let hornI = li_ && lj && !kin && (organelles(aj)&O_RIGID)==0u && (att[i] & A_FROZEN) == 0u && (organelles(att[i]) & O_PRED) != 0u && dot(navHeading(i), n) > 0.25;
+        let hornJ = li_ && lj && !kin && (organelles(att[i])&O_RIGID)==0u && (aj & A_FROZEN) == 0u && (organelles(aj) & O_PRED) != 0u && dot(navHeading(jg), -n) > 0.25;
+        if (hornJ && (organelles(att[i])&O_RIGID)==0u) {
           let depth = 0.44 / sqrt(strength); let closing = dot(v - vj, n);
           fatalContact = fatalContact || (rl < depth && (closing > 0.008 || rl < depth * 0.65));
         }
@@ -2637,7 +2714,8 @@ ${CARGO_LINK}
   if (t == 16u && !consumed) {
     let gb = geneB(a); let env = (f32((z >> 8u) & 255u) - 128.0) / 32.0;
     let medium = f32(z & 255u) / 255.0; let drain = f32((z >> 16u) & 255u) / 64.0;
-    value -= P.lifeCost * (1.0 + select(0.0, 0.5, (organelles(a) & O_PRED) != 0u) + (1.0 - medium) * 0.5);
+    value += select(0.0,select(0.015,0.12,medium<0.25),(organelles(a)&O_PLANT)!=0u);
+    value -= select(P.lifeCost,0.0,(organelles(a)&O_PLANT)!=0u) * (1.0 + select(0.0, 0.5, (organelles(a) & O_PRED) != 0u) + (1.0 - medium) * 0.5);
     value -= drain * P.lifeBite;
     let org=organelles(a);
     if(env>0.0 && (org&O_THERMO)!=0u){value+=THERMO_FOOD*min(env,4.0);}
@@ -2779,7 +2857,7 @@ fn wallAt(p: vec2f) -> bool {
   let vl = length(v);
   if (wallAt(o) || !(vl < 1e4)) { att[i] = a & ~TM; return; }
   if (vl > P.maxStep) { v *= P.maxStep / vl; x = o + v; }
-  if(t==16u && (a&A_FROZEN)==0u && (organelles(a)&O_ROLL)!=0u){
+  if(t==16u && (a&A_FROZEN)==0u && (organelles(a)&O_ROLL)!=0u && (organelles(a)&O_PLANT)==0u){
     // The payload sign bit retains steering through the existing passes; no new binding.
     let roll=P.lifeSwim*0.90*select(1.0,-1.0,(bitcast<u32>(xr.z)&0x80000000u)!=0u)*0.18;
     if(wallAt(o+vec2f(0.0,0.52))){v.x+=roll;}if(wallAt(o-vec2f(0.0,0.52))){v.x-=roll;}
@@ -3272,6 +3350,9 @@ fn cell(p: vec2i, dim: vec2i) -> u32 {
     (l & 65535u) != gene || (r & 65535u) != gene || (u & 65535u) != gene || (d & 65535u) != gene;
   var body = lifeBody(gene) * 0.483 + vec3f(16.0/255.0);
   var membrane = lifeHue(gene) * 0.35 + vec3f(0.65);
+  if((gene&16u)!=0u){body=vec3f(0.12,0.31,0.07);membrane=vec3f(0.39,0.68,0.19);}
+  else if((gene&2u)!=0u){body=vec3f(0.37,0.42,0.35);membrane=vec3f(0.92,0.95,0.85);}
+  else if((gene&4u)!=0u){body=vec3f(0.34,0.18,0.48);membrane=vec3f(0.88,0.70,1.0);}
   if ((a & 65536u) != 0u) {
     let frost = select(0.0, 0.08, (p.x + p.y) % 7 == 0);
     body = body * 0.2 + vec3f(0.32, 0.52, 0.64) + frost;
@@ -3304,9 +3385,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) local: vec2f,
     if ((a & (1u<<13u)) != 0u && (id%11u==0u || dens[ii].x<1.0)){o.flags|=8u;}
     if ((a & (1u<<14u)) != 0u && (id%13u==0u || dens[ii].x<1.0)){o.flags|=16u;}
     if ((a & (1u<<15u)) != 0u && (id%9u==0u || dens[ii].x<1.0)){o.flags|=32u;}
+    if((a&(1u<<11u))!=0u&&(id%8u==0u||dens[ii].x<1.0)){o.flags|=64u;}
     if ((a & A_FROZEN) != 0u) { o.flags |= 4u; }
   }
-  if ((o.flags & 59u) == 0u) { o.pos = vec4f(2.0,2.0,0.0,1.0); return o; }
+  if ((o.flags & 123u) == 0u) { o.pos = vec4f(2.0,2.0,0.0,1.0); return o; }
   o.pos = vec4f(o.world.x/R.W*2.0-1.0,1.0-o.world.y/R.H*2.0,0.0,1.0); return o;
 }
 @fragment fn fs(i: VO) -> @location(0) vec4f {
@@ -3314,6 +3396,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) local: vec2f,
   var owner = 0u;
   if (all(p >= vec2i(0)) && all(p < dim)) { owner = mask[u32(p.y*dim.x+p.x)]; }
   if(owner!=0u && (owner&65535u)==i.gene){
+    if((i.flags&64u)!=0u && length(i.local-vec2f(0.0,-0.15))<0.16){return vec4f(0.76,0.97,0.10,1.0);}
     for(var kind=0u;kind<3u;kind++){
       if((i.flags&(8u<<kind))==0u){continue;}
       var centre=vec2f(-0.25,-0.19);var col=vec3f(1.0,0.44,0.06);
@@ -3361,7 +3444,7 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   var o: VO;
   let a = att[ii]; let t = a & TM;
   o.t = select(t, (a >> 24u) & 31u, t == 17u); o.uv = q[vi]; o.seed = f32((a >> 8u) & 255u) / 255.0;
-  let show = select((t == 3u && R.mode == 1u) || (R.mode == 2u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
+  let show = select(t==19u || t==20u || (t == 3u && R.mode == 1u) || (R.mode == 2u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
   if (!show) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; }
   let rad = select(select(R.drad, R.grad, t == 3u), 0.06 + 0.32 * sqrt(f32((a >> 16u) & 255u) / 255.0), t == 17u);
   let p = st[ii].zw + q[vi] * rad;
@@ -3376,7 +3459,7 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   let cov = 1.0 - smoothstep(1.0 - aa * 1.5, 1.0, r);
   if (cov <= 0.0) { discard; }
   var col: vec3f;
-  if (isGranR(i.t)) {
+  if(i.t==19u){col=vec3f(0.72,1.0,0.08);}else if(i.t==20u){col=vec3f(0.67,0.47,0.15);}else if (isGranR(i.t)) {
     var base = vec3f(0.42 + 0.34 * fract(i.seed * 7.31));
     if (i.t == 8u) { base *= vec3f(1.45, 1.24, 0.80); }        // sand
     else if (i.t == 9u) { base *= vec3f(0.40, 0.40, 0.46); }   // gunpowder
@@ -3463,6 +3546,103 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
   let smoke = fall * smoothstep(0.45, 0.8, u) * (1.0 - smoothstep(0.8, 1.0, u)) * 0.22;
   return vec4f(col * glow + vec3f(0.20, 0.20, 0.22) * smoke, smoke);
 }`;
+const RARE_HDR = HDR + /* wgsl */`
+struct RareMeta { rest:vec2f, previous:vec2f, gene:u32, age:u32, rooted:u32, pad:u32 };
+struct RareSnap { state:vec4f, attr:u32, pad0:u32, pad1:u32, pad2:u32 };
+struct RareRequest { motion:vec4f, attr:u32, pad0:u32, pad1:u32, pad2:u32 };
+struct RareEmits { count:atomic<u32>, flags:atomic<u32>, pad1:u32, pad2:u32, items:array<RareRequest,128> };
+`;
+const SH_RARE_LIST = RARE_HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read> st:array<vec4f>;
+@group(0) @binding(2) var<storage,read> att:array<u32>;
+@group(0) @binding(3) var<storage,read> pid:array<u32>;
+@group(0) @binding(4) var<storage,read_write> rmeta:array<RareMeta>;
+@group(0) @binding(5) var<storage,read_write> heads:array<atomic<u32>>;
+@group(0) @binding(6) var<storage,read_write> next:array<u32>;
+@group(0) @binding(7) var<storage,read_write> snap:array<RareSnap>;
+@group(0) @binding(8) var<storage,read_write> emits:RareEmits;
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ let i=gid.x;if(i>=P.nUpper){return;}let a=att[i];snap[i].state=st[i];snap[i].attr=a;
+ let t=a&TM;let org=organelles(a);if(t==19u||t==20u||(t==16u&&(org&480u)!=0u)){atomicOr(&emits.flags,2u|select(0u,1u,t==20u||(t==16u&&(org&O_PLANT)!=0u))|select(0u,4u,t==16u&&(org&(O_RIGID|O_JELLY))!=0u&&(org&O_PLANT)==0u));}
+ if(t!=20u && !(t==16u && (org&480u)!=0u)){return;}
+ let id=pid[i]&ID_MASK;let g=genome(a);if(rmeta[id].gene!=g+1u){rmeta[id]=RareMeta(st[i].zw,st[i].zw,g+1u,0u,0u,0u);}
+ if((a&A_FROZEN)!=0u){return;}rmeta[id].age+=1u;
+ if(t==16u && (org&(O_RIGID|O_JELLY))!=0u && (org&O_PLANT)==0u){let old=atomicExchange(&heads[g],i+1u);next[i]=old;if(old==0u){let slot=atomicAdd(&heads[65536u],1u);atomicStore(&heads[65540u+slot],g);atomicMax(&heads[65537u],slot/64u+1u);atomicStore(&heads[65538u],1u);atomicStore(&heads[65539u],1u);}}
+}`;
+const SH_RARE_LOCAL = RARE_HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read> snap:array<RareSnap>;
+@group(0) @binding(2) var<storage,read_write> st:array<vec4f>;
+@group(0) @binding(3) var<storage,read_write> att:array<u32>;
+@group(0) @binding(4) var<storage,read> starts:array<u32>;
+@group(0) @binding(5) var<storage,read_write> rmeta:array<RareMeta>;
+@group(0) @binding(6) var<storage,read_write> emits:RareEmits;
+@group(0) @binding(7) var<storage,read> walls:array<u32>;
+@group(0) @binding(8) var<storage,read> pid:array<u32>;
+fn wall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
+fn emit(p:vec2f,v:vec2f,a:u32){if(wall(p)){return;}let k=atomicAdd(&emits.count,1u);if(k<128u){emits.items[k].motion=vec4f(p,v);emits.items[k].attr=a;}}
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ let i=gid.x;if(i>=P.nUpper){return;}let a=snap[i].attr;let t=a&TM;let g=genome(a);let org=organelles(a);let soil=t==3u||t==8u||t==11u||t==12u;
+ if(atomicLoad(&emits.flags)==0u || (soil&&(atomicLoad(&emits.flags)&1u)==0u)){return;}
+ if(t!=19u && t!=20u && !(t==16u&&(org&480u)!=0u) && !soil){return;}
+ if(t==19u){let age=(a>>16u)+1u;att[i]=select((a&65535u)|(age<<16u),1u,age>360u);return;}
+ if((a&A_FROZEN)!=0u){return;}let id=pid[i]&ID_MASK;let q=snap[i].state.zw;let vel=snap[i].state.xy-q;
+ var wet=0u;var solid=wall(q+vec2f(0.0,0.55))||wall(q+vec2f(-0.55,0.0))||wall(q+vec2f(0.55,0.0));var sv=vec2f(0.0);var root=0u;var enemy=0u;var best=25.0;
+ let spray=t==16u&&(org&O_ACID)!=0u&&id%8u==0u&&u32(P.lifeClock)%120u==id%120u;let rad=select(1.0,5.0,spray);
+ let lo=cellXY(q-vec2f(rad));let hi=cellXY(q+vec2f(rad));
+ for(var y=lo.y;y<=hi.y;y++){for(var j=starts[u32(y)*P.gw+u32(lo.x)];j<starts[u32(y)*P.gw+u32(hi.x)+1u];j++){
+  if(j==i){continue;}let b=snap[j];let bt=b.attr&TM;let delta=b.state.zw-q;let d=dot(delta,delta);
+  if(d<1.0){if(bt==1u||bt==2u){wet++;}if(isGran(bt)&&d<0.75){solid=true;sv=b.state.xy-b.state.zw;}
+   if(bt==16u&&(organelles(b.attr)&O_PLANT)!=0u&&(b.attr&A_FROZEN)==0u&&delta.y<0.15){root=j+1u;}}
+  if(bt==16u&&genome(b.attr)!=g&&(organelles(b.attr)&O_PRED)!=0u&&d<best){best=d;enemy=j+1u;}
+ }}
+ if(soil){if(root>0u&&wet<3u&&rnd(id+17u,u32(P.lifeClock))<0.0008){att[i]=mkLife(genome(snap[root-1u].attr),120u)|A_APPEND;st[i]=vec4f(q,q);}return;}
+ if(t==20u){if(rmeta[id].age>90u&&solid&&wet<3u){att[i]=mkLife(g,180u);for(var k=-1;k<=1;k++){emit(q+vec2f(f32(k)*0.4,-0.45),vec2f(0.0),mkLife(g,150u));}}else if(rmeta[id].age>2400u){att[i]=(a&0xFF00u)|6u;}return;}
+ if((org&O_PLANT)!=0u){
+  if(solid&&wet<3u){rmeta[id].rooted=1u;}if(length(vel)>0.20){rmeta[id].rooted=0u;}
+  if(rmeta[id].rooted!=0u){let bodyTarget=rmeta[id].previous+sv;if(!wall(bodyTarget)){st[i]=vec4f(bodyTarget,bodyTarget);}}rmeta[id].previous=st[i].zw;
+  if(rmeta[id].rooted!=0u&&wet<3u&&rnd(id+541u,u32(P.lifeClock))<0.00012){emit(q+vec2f(0.0,-0.7),vec2f((rnd(id,2u)-0.5)*0.015,-0.025),6u);}
+  if(rmeta[id].rooted!=0u&&wet<3u&&rmeta[id].age>240u&&rnd(id+771u,u32(P.lifeClock))<0.00005){emit(q+vec2f(0.0,-0.8),vec2f((rnd(id,u32(P.lifeClock))-0.5)*0.26,-0.20),(mkLife(g,0u)&~TM)|20u);}
+ }
+ if(enemy>0u&&spray){let d=(snap[enemy-1u].state.zw-q)/max(0.1,sqrt(best));for(var k=-1;k<=1;k++){emit(q+d*0.8,d*0.17+vec2f(-d.y,d.x)*f32(k)*0.035,19u);}}
+}`;
+const SH_RARE_BODY = RARE_HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read_write> st:array<vec4f>;
+@group(0) @binding(2) var<storage,read> att:array<u32>;
+@group(0) @binding(3) var<storage,read> pid:array<u32>;
+@group(0) @binding(4) var<storage,read_write> rmeta:array<RareMeta>;
+@group(0) @binding(5) var<storage,read> heads:array<u32>;
+@group(0) @binding(6) var<storage,read> next:array<u32>;
+@group(0) @binding(7) var<storage,read> walls:array<u32>;
+@group(0) @binding(8) var<storage,read_write> emits:RareEmits;
+fn wall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
+fn emit(p:vec2f,v:vec2f,a:u32){if(wall(p)){return;}let k=atomicAdd(&emits.count,1u);if(k<128u){emits.items[k].motion=vec4f(p,v);emits.items[k].attr=a;}}
+fn bodyTarget(i:u32,centre:vec2f,rest:vec2f,rot:vec2f,rigid:bool)->vec2f{
+ let id=pid[i]&ID_MASK;var d=rmeta[id].rest-rest;
+ if((att[i]&A_APPEND)!=0u){d.x+=0.28*sin(rmeta[id].rest.y*1.8-P.lifeClock*0.09);}
+ else if(!rigid){let pulse=sin(P.lifeClock*0.055);d*=vec2f(1.0+0.10*pulse,1.0-0.06*pulse);}
+ return centre+vec2f(rot.x*d.x-rot.y*d.y,rot.y*d.x+rot.x*d.y);
+}
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) gid:vec3u){
+ if(gid.x>=heads[65536u]){return;}let g=heads[65540u+gid.x];var centre=vec2f(0.0);var rest=vec2f(0.0);var velocity=vec2f(0.0);var oldCentre=vec2f(0.0);var count=0.0;var appendCount=0u;var canBud=true;
+ var node=heads[g];for(var limit=0u;node>0u&&limit<P.nUpper;limit++) {let i=node-1u;node=next[i];if((att[i]&A_APPEND)!=0u){appendCount++;continue;}let id=pid[i]&ID_MASK;canBud=canBud&&rmeta[id].age>30u&&rmeta[id].age>rmeta[id].pad;centre+=st[i].zw;oldCentre+=rmeta[id].previous;rest+=rmeta[id].rest;velocity+=st[i].xy-st[i].zw;count+=1.0;}
+ if(count==0.0){return;}centre/=count;rest/=count;velocity/=count;oldCentre/=count;
+ if((g&2u)!=0u){velocity=(centre-oldCentre)*P.lifeDamp+vec2f(P.gx,P.gy);let speed=length(velocity);if(speed>P.maxStep){velocity*=P.maxStep/speed;}}
+ var radius=1.0;var dotSum=0.0;var crossSum=0.0;node=heads[g];for(var limit=0u;node>0u&&limit<P.nUpper;limit++){let i=node-1u;node=next[i];if((att[i]&A_APPEND)!=0u){continue;}let d=rmeta[pid[i]&ID_MASK].rest-rest;let p=st[i].zw-centre;radius=max(radius,length(d));dotSum+=dot(d,p);crossSum+=d.x*p.y-d.y*p.x;}
+ if(appendCount==0u&&count>=4.0&&canBud){
+  if((g&2u)!=0u){for(var k=1;k<=12;k++){emit(centre+vec2f(-radius-f32(k)*0.38,sin(f32(k)*0.5)*0.18),velocity,mkLife(g,120u)|A_APPEND);}}
+  if((g&4u)!=0u){for(var strand=-1;strand<=1;strand++){for(var k=1;k<=8;k++){emit(centre+vec2f(f32(strand)*radius*0.6,radius*0.3+f32(k)*0.39),velocity,mkLife(g,120u)|A_APPEND);}}}
+  node=heads[g];for(var limit=0u;node>0u&&limit<P.nUpper;limit++){let i=node-1u;node=next[i];let id=pid[i]&ID_MASK;rmeta[id].pad=rmeta[id].age+240u;}
+ }
+ let angle=atan2(crossSum,dotSum);let rot=vec2f(cos(angle),sin(angle));let rigid=(g&2u)!=0u;var blocked=false;
+ node=heads[g];for(var limit=0u;node>0u&&limit<P.nUpper;limit++){let i=node-1u;node=next[i];if((att[i]&A_APPEND)==0u&&wall(bodyTarget(i,centre,rest,rot,rigid))){blocked=true;}}
+ node=heads[g];for(var limit=0u;node>0u&&limit<P.nUpper;limit++){
+  let i=node-1u;node=next[i];let id=pid[i]&ID_MASK;let append=(att[i]&A_APPEND)!=0u;let old=st[i].zw;var p=bodyTarget(i,centre,rest,rot,rigid);
+  if(blocked&&!append){p=rmeta[id].previous;}
+  if(append||!rigid){let d=p-old;p=old+d*min(select(0.18,0.3,append),0.15/max(length(d),1e-6));}
+  if(wall(p)){p=old;}st[i]=vec4f(p+select(velocity,vec2f(0.0),blocked),p);rmeta[id].previous=p;
+ }
+}`;
+
 const PLAYER_HDR = /* wgsl */`
 struct Player { pos: vec2f, vel: vec2f, input: vec4f, status: vec4f, reserved: vec4f };
 `;
@@ -3477,7 +3657,7 @@ struct PlayerBlast { n:u32, pad:u32, pos:array<vec2f,64> };
 @group(0) @binding(7) var<storage,read> blast1:PlayerBlast;
 fn lethalBlast(event:vec2f,p:vec2f)->bool{let mega=event.x<0.0;let origin=vec2f(select(event.x,-event.x-1.0,mega),event.y);let radius=select(P.blastR,max(P.blastR,length(vec2f(f32(P.gw),f32(P.gh)))*MELTDOWN_REACH),mega);let delta=max(vec2f(0.0),abs(p-vec2f(0.0,2.1)-origin)-vec2f(0.85,2.1));return length(delta)<radius;}
 fn die(){player.reserved.x=0.0;player.vel=vec2f(0.0);}
-fn lethalContact(a:u32,q:vec2f,p:vec2f)->bool{let t=a&TM;return (t==4u||t==7u||t==18u)&&all(abs(q-(p-vec2f(0.0,2.1)))<vec2f(1.15,2.4));}
+fn lethalContact(a:u32,q:vec2f,p:vec2f)->bool{let t=a&TM;return (t==4u||t==7u||t==18u||t==19u)&&all(abs(q-(p-vec2f(0.0,2.1)))<vec2f(1.15,2.4));}
 fn wall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
 fn blocked(p:vec2f)->bool{for(var y=p.y-4.2;y<=p.y+0.001;y+=0.3){if(wall(vec2f(p.x-0.85,y))||wall(vec2f(p.x,y))||wall(vec2f(p.x+0.85,y))){return true;}}return wall(p+vec2f(-0.85,0.0))||wall(p+vec2f(0.85,0.0));}
 @compute @workgroup_size(1) fn main(){
@@ -3688,6 +3868,9 @@ class GpuSim {
     this.modules = [];
     const mod = (code, name) => { const m = device.createShaderModule({ code, label: name }); this.modules.push([name, m]); return m; };
     const cp = (code, name) => device.createComputePipeline({ layout: 'auto', compute: { module: mod(code, name), entryPoint: 'main' } });
+    this.rareMeta=B(ID_SPACE*32,U.STORAGE|U.COPY_DST);this.rareHeads=B(131076*4,U.STORAGE|U.COPY_DST|U.INDIRECT);this.rareNext=B(M*4,U.STORAGE);this.rareSnap=B(M*32,U.STORAGE);this.rareEmits=B(4112,U.STORAGE|U.COPY_DST|U.COPY_SRC);
+    this.rareReads=Array.from({length:3},()=>({buf:B(4112,U.COPY_DST|U.MAP_READ),busy:false}));
+    this.pRareList=cp(SH_RARE_LIST,'rare-list');this.pRareLocal=cp(SH_RARE_LOCAL,'rare-local');this.pRareBody=cp(SH_RARE_BODY,'rare-body');
     this.pPlayer=cp(SH_PLAYER,'player');this.pPlayerPush=cp(SH_PLAYER_PUSH,'player-push');
     this.pCues = cp(SH_CUES, 'food-cues'); this.pSense = cp(SH_SENSE, 'organelle-sense');
     this.pCount = cp(SH_COUNT, 'count'); this.pScan = cp(SH_SCAN, 'scan'); this.pScatter = cp(SH_SCATTER, 'scatter');
@@ -3719,6 +3902,9 @@ class GpuSim {
     const bg = (pipe, res) => device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: res.map((r, i) => ({ binding: i, resource: r instanceof GPUBuffer ? { buffer: r } : r })) });
     const u = this.uni, st = this.st, at = this.at, X = this.X;
     this.bg = [0, 1].map(p => { const I = p, O = 1 - p; return {
+      rareList:bg(this.pRareList,[u,st[O],at[I],this.pid[O],this.rareMeta,this.rareHeads,this.rareNext,this.rareSnap,this.rareEmits]),
+      rareLocal:bg(this.pRareLocal,[u,this.rareSnap,st[O],at[I],this.starts,this.rareMeta,this.rareEmits,this.wallBuf,this.pid[O]]),
+      rareBody:bg(this.pRareBody,[u,st[O],at[I],this.pid[O],this.rareMeta,this.rareHeads,this.rareNext,this.wallBuf,this.rareEmits]),
       count: bg(this.pCount, [u, st[I], at[I], this.counts, this.key, this.cellAct, this.anchor[I]]),
       scatter: bg(this.pScatter, [u, st[I], at[I], this.key, this.starts, st[O], at[O], this.anchor[I], this.anchor[O]]),
       cues: bg(this.pCues, [u, st[O], at[O], this.starts, this.cues]),
@@ -3767,7 +3953,7 @@ class GpuSim {
     const k = this.pendN++;
     this.pendSt[k * 4] = x + vx; this.pendSt[k * 4 + 1] = y + vy; this.pendSt[k * 4 + 2] = x; this.pendSt[k * 4 + 3] = y;
     this.pendAt[k] = t === T_LIFE
-      ? (T_LIFE | ((gene & 255) << 8) | (Math.min(250, PRM.lifeStart) << 16) | (((gene >>> 8) & 255) << 24)) >>> 0
+      ? (T_LIFE | ((gene & 255) << 8) | (Math.min(250, PRM.lifeStart) << 16) | (((gene >>> 8) & 255) << 24) | (gene&0x10000?A_APPEND:0)) >>> 0
       : t | (((Math.random() * 256) | 0) << 8);
     this.pendPid[k] = this.nextId = (this.nextId + 1) & ID_MASK;
     this.pendAnchor[k * 4] = x; this.pendAnchor[k * 4 + 1] = y; this.pendAnchor[k * 4 + 2] = this.frameId;
@@ -3870,7 +4056,7 @@ class GpuSim {
       const timeThis = this.hasTS && s === 0 && physics;
       enc.clearBuffer(this.counts);
       enc.clearBuffer(this.cellAct);
-      if (physics) enc.clearBuffer(this.blast[this.bw]);
+      if (physics) {enc.clearBuffer(this.blast[this.bw]);enc.clearBuffer(this.rareHeads);if(s===0)enc.clearBuffer(this.rareEmits);}
       const pass = enc.beginComputePass(timeThis ? { timestampWrites: { querySet: this.qset, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } } : undefined);
       pass.setPipeline(this.pCount); pass.setBindGroup(0, g.count); pass.dispatchWorkgroups(wg);
       pass.setPipeline(this.pWake); pass.setBindGroup(0, this.bgWake[this.bw]); pass.dispatchWorkgroups(Math.ceil(NC / WG));
@@ -3896,6 +4082,9 @@ class GpuSim {
         pass.setPipeline(this.pFric); pass.setBindGroup(0, g.fric[x]); pass.dispatchWorkgroups(wg); x = 1 - x;
         pass.setPipeline(this.pFinal); pass.setBindGroup(0, g.final[x][this.bw]); pass.dispatchWorkgroups(wg);
         this.bw = 1 - this.bw;
+        pass.setPipeline(this.pRareList);pass.setBindGroup(0,g.rareList);pass.dispatchWorkgroups(wg);
+        pass.setPipeline(this.pRareLocal);pass.setBindGroup(0,g.rareLocal);pass.dispatchWorkgroups(wg);
+        pass.setPipeline(this.pRareBody);pass.setBindGroup(0,g.rareBody);pass.dispatchWorkgroupsIndirect(this.rareHeads,65537*4);
         if(hasRotors){pass.setPipeline(this.pMachines);pass.setBindGroup(0,g.machines);pass.dispatchWorkgroups(wg);pass.setPipeline(this.pRotors);pass.setBindGroup(0,this.bgRotors);pass.dispatchWorkgroups(1);}
         if(player.active){pass.setPipeline(this.pPlayer);pass.setBindGroup(0,g.player);pass.dispatchWorkgroups(1);
         pass.setPipeline(this.pPlayerPush);pass.setBindGroup(0,g.playerPush);pass.dispatchWorkgroups(wg);}
@@ -3954,7 +4143,14 @@ class GpuSim {
       mp.setPipeline(this.pCargo); mp.setBindGroup(0, g.cargo); mp.draw(6, n);
     }
     mp.end();
+    let rareRead=physics&&this.nUpper>0?this.rareReads.find(r=>!r.busy):null;const rareEpoch=epoch;
+    if(rareRead){rareRead.busy=true;enc.copyBufferToBuffer(this.rareEmits,0,rareRead.buf,0,4112);}
     q.submit([enc.finish()]);
+    if(rareRead){const slot=rareRead;slot.buf.mapAsync(GPUMapMode.READ).then(()=>{
+      const words=new Uint32Array(slot.buf.getMappedRange()).slice();slot.buf.unmap();slot.busy=false;
+      if(rareEpoch!==epoch)return;const floats=new Float32Array(words.buffer);
+      for(let k=0;k<Math.min(128,words[0]);k++){const b=4+k*8,a=words[b+4],x=floats[b],y=floats[b+1];if(!wallAt(x,y)&&this.add(x,y,a&TM,floats[b+2],floats[b+3],genome(a))){this.pendAt[this.pendN-1]=a|A_FRESH;const cell=Math.floor(y)*GW+Math.floor(x);if(cell>=0&&cell<NC){occ.recent[cell]++;occ.cur.push(cell);}}}
+    },()=>{slot.busy=false;});}
     if(playerRead){const slot=playerRead;slot.buf.mapAsync(GPUMapMode.READ).then(()=>{
       const a=new Float32Array(slot.buf.getMappedRange());
       if(playerRev===player.rev&&f>=(this.lastPlayerFrame||0)){this.lastPlayerFrame=f;if(player.active&&a[12]<.5){player.death=true;player.keys.clear();}player.active=a[12]>.5;player.x=a[0];player.y=a[1];player.vx=a[2];player.vy=a[3];player.ground=a[8]>.5;player.wet=a[9]>.5;player.face=a[10];player.phase+=Math.abs(a[2])*steps*.65;}
@@ -3980,7 +4176,7 @@ class GpuSim {
 const LIFE_HUE = [[61, 219, 92], [41, 217, 189], [77, 163, 255], [163, 102, 255],
                   [255, 87, 204], [255, 115, 77], [255, 199, 61], [179, 242, 61]];
 function lifeRGB(g, membrane) {
-  let c = LIFE_HUE[g & 7].slice();
+  let c = g&16?[71,163,46]:g&2?[211,218,203]:g&4?[203,141,255]:LIFE_HUE[g & 7].slice();
   if (!(g & 64)) { const l = (c[0] + c[1] + c[2]) / 3; c = c.map(v => v + (l - v) * 0.35); }
   if (g & 8) c = c.map(v => v * 0.72);
   if (membrane) return (g & 128) ? c.map(v => v + (255 - v) * 0.62) : c.map(v => Math.min(255, v * 1.35 + 26));
@@ -4082,6 +4278,7 @@ class CpuSim {
       else if (t === 14) c = [140, 209, 247];
       else if (t === 15) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.3 ? [230, 237, 245] : u < 0.6 ? [189, 199, 212] : [140, 148, 161]; }
+      else if (t === 19) c = [185,255,20];else if(t===20)c=[172,120,38];
       else if (t === 16) c = lifeRGB((a >> 8) & 255, false);
       else { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.16 ? [255, 245, 194] : u < 0.34 ? [255, 199, 61] : u < 0.56 ? [255, 122, 23] : u < 0.78 ? [207, 51, 10] : [54, 54, 61]; }
@@ -4173,6 +4370,7 @@ class CpuSim {
         c = u < 0.3 ? [230, 237, 245] : u < 0.6 ? [189, 199, 212] : [140, 148, 161]; }
       else if (t === 4) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.2 ? [255, 240, 180] : u < 0.45 ? [255, 170, 40] : u < 0.7 ? [220, 70, 15] : [70, 70, 78]; rr = 1.4; }
+      else if(t===19){c=[185,255,20];rr=.65;}else if(t===20){c=[172,120,38];rr=.65;}
       else if (t === 16) { c = lifeRGB((a >> 8) & 255, true); rr = 1.0; }
       else { c = [255, 170, 40]; }
       for (let y = Math.max(0, Math.floor(cy - rr)); y <= Math.min(FH - 1, Math.floor(cy + rr)); y++)
@@ -4191,6 +4389,7 @@ class CpuSim {
       const x = e.qx[i], y = e.qy[i], len = Math.hypot(e.wet[i],e.react[i]);
       const h = strainHeading(genome(a));
       const nx = len > 0.01 ? -e.wet[i]/len : h[0], ny = len > 0.01 ? -e.react[i]/len : h[1];
+      if((org&O_ACID)&&(id%8===0||e.rho[i]<1)){c.beginPath();c.arc(x,y-.15,.16,0,Math.PI*2);c.fillStyle='#c2f719';c.fill();}
       if ((org & O_CHEM) && (id%7 === 0 || e.rho[i] < 1.0)) {
         const r = 0.13+0.12*Math.sqrt(vitOf(a)/250), ox=x-nx*0.07, oy=y-ny*0.07;
         c.beginPath(); c.arc(ox,oy,r,0,Math.PI*2); c.fillStyle=frozen?'#8696bb':'#c889ff'; c.fill();
@@ -4291,7 +4490,7 @@ function newStrain() {
   const a = mkLife(strain, PRM.lifeStart), gb = geneB(a);
   $('strain-info').textContent = 'Strain ' + strain.toString(16).padStart(4, '0').toUpperCase() +
     ' · Membrane ' + membraneStrength(a).toFixed(2) + '× · Jelly ' + (lifeGate(a, T_JELLO) ? 'accepted' : 'rejected') +
-    ' · ' + (gb & B_MOTILE ? 'Strong swimming membrane' : 'Swimming membrane') + ' · Organelles: ' + ([organelles(a) & O_CHEM ? 'Chemophile' : '', organelles(a) & O_PRED ? 'Predator' : '', organelles(a) & O_THERMO ? 'Thermophile' : '', organelles(a) & O_RADIO ? 'Radiophile' : '', organelles(a) & O_ROLL ? 'Roller' : ''].filter(Boolean).join(' + ') || 'none') + ' · ' + (geneA(a) & 8 ? 'Oil affinity' : 'Water affinity');
+    ' · ' + (organelles(a)&O_PLANT?'Rooted / no swimming':gb & B_MOTILE ? 'Strong swimming membrane' : 'Swimming membrane') + ' · Organelles: ' + ([organelles(a) & O_CHEM ? 'Chemophile' : '', organelles(a) & O_PRED ? 'Predator' : '', organelles(a) & O_THERMO ? 'Thermophile' : '', organelles(a) & O_RADIO ? 'Radiophile' : '', organelles(a) & O_ROLL ? 'Roller' : '', organelles(a)&O_RIGID?'Rigid body':'', organelles(a)&O_JELLY?'Jellyfish':'', organelles(a)&O_ACID?'Acid defense':'', organelles(a)&O_PLANT?'Plantlike':''].filter(Boolean).join(' + ') || 'none');
 }
 
 function rnd(a, b) { return a + Math.random() * (b - a); }
@@ -4320,6 +4519,17 @@ function stampBrush(cx, cy, R, t, vx, vy, gene) {
       }
     }
 }
+function stampRareLife(x,y,R,g){
+ const plant=!!(g&16),jelly=!!(g&4),rigid=!!(g&2),radius=Math.max(1.3,Math.min(R,3.5));
+ const put=(dx,dy,append=false)=>spawnParticle(x+dx,y+dy,T_LIFE,0,0,g|(append?0x10000:0));
+ for(let dy=-radius;dy<radius;dy+=.43)for(let dx=-radius;dx<radius;dx+=.43){
+  if(plant?Math.abs(dy)<.55 && Math.abs(dx)<radius:jelly?dy<=radius*.3&&dx*dx/(radius*radius)+dy*dy/(radius*radius*.65)<1:dx*dx+dy*dy<radius*radius)put(dx,dy);
+ }
+ if(rigid&&!plant)for(let k=1;k<=13;k++)put(-radius-k*.38,Math.sin(k*.55)*.18,true);
+ if(jelly&&!plant)for(let strand=-1;strand<=1;strand++)for(let k=1;k<=10;k++)put(strand*radius*.65+Math.sin(k*.5+strand)*.15,radius*.3+k*.39,true);
+ if(plant)for(let strand=-1;strand<=1;strand++)for(let k=1;k<=3;k++)put(strand*.65,k*.4,true);
+}
+
 function applyInput(steps) {
   const tool = { kind: 0 };
   const name = ptr.down ? (ptr.btn === 'R' ? ui.toolR : ui.toolL) : null;
@@ -4335,7 +4545,7 @@ function applyInput(steps) {
     const t = TYPE_OF[name];
     let vx = (x1 - x0) / st * 0.5, vy = (y1 - y0) / st * 0.5; const vl = Math.hypot(vx, vy); if (vl > 0.2) { vx *= 0.2 / vl; vy *= 0.2 / vl; }
     if (t === T_FIRE) vy -= 0.04 * Math.sign(PRM.gy || 0);
-    for (let k = 1; k <= n; k++) stampBrush(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, R, t, vx, vy, strain);
+    if(t===T_LIFE&&(strain&RARE_MASK)){if(fresh)stampRareLife(x1,y1,R,strain);}else for (let k = 1; k <= n; k++) stampBrush(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, R, t, vx, vy, strain);
   } else if(name==='player'){if(fresh){if(player.active)showMsg('Only one player at a time.');else if(player.place(x1,y1,wallAt))showMsg('WASD · A/D walk · W jump/swim · S dive.');else showMsg('Leave room for the player’s head and legs.');}}
   else if(name==='turbine'||name==='gate'){if(fresh){if(!machines.place(name,x1,y1))showMsg('Leave space around machines. Limit: 64 turbines and 64 gates.');else showMsg(name==='turbine'?'Flywheel placed · Flow drives P. Wire power into M+ or M− to drive the blades.':'NAND placed · Wire A and B on the left; output on the right.');}}
   else if(name==='wire'){machines.wireLine(x0,y0,x1,y1);}
