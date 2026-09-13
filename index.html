@@ -87,6 +87,7 @@
   .cell[data-t="snow"]   { color: var(--snow); }
   .cell[data-t="ice"]    { color: var(--ice); }
   .cell[data-t="steam"]  { color: var(--steam); }
+  .cell[data-t="player"] { color: #fff; }
   .cell[data-t="life"]   { color: var(--life); }
   .cell[data-t="life"] .sw { background: radial-gradient(circle at 50% 50%, #eafff0 0 30%, #3ddc6a 32% 68%, #12702f 70%); }
   .cell[data-t="erase"], .cell[data-t="wind"], .cell[data-t="drag"] { color: var(--tool); }
@@ -154,6 +155,7 @@
       <button class="cell" id="t-erase"  data-t="erase">Erase</button>
       <button class="cell" id="t-wind"   data-t="wind">Wind</button>
       <button class="cell" id="t-drag"   data-t="drag">Drag</button>
+      <button class="cell" id="t-player" data-t="player" title="Place one WASD player. Fire, lava, Meltdown and explosions are fatal."><span class="sw"></span>Player</button>
       <button class="cell" id="t-turbine" data-t="turbine" title="Flywheel generator/motor. Retains spin. P supplies power; M+ and M− drive opposite directions.">✛ Turbine</button>
       <button class="cell" id="t-wire" data-t="wire" title="Drag between terminals. Touching wires connect.">⌁ Wire</button>
       <button class="cell" id="t-gate" data-t="gate" title="NAND: two inputs on the left, one output on the right.">⊼ NAND</button>
@@ -170,8 +172,8 @@
     </div>
   </div>
   <div id="life-guide">
-    <button class="cell" id="o-life-demo">Life lab</button><button class="cell" id="o-power-demo">Power lab</button><button class="cell" id="o-player-reset" title="Return the WASD character to the top of the world">Respawn</button>
-    <div><strong>WASD</strong> A/D walk · W jump/swim · S dive/fast-fall. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. All five organelles can combine freely. Organelles steer movement toward nearby resources. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
+    <button class="cell" id="o-life-demo">Life lab</button><button class="cell" id="o-power-demo">Power lab</button>
+    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. All five organelles can combine freely. Organelles steer movement toward nearby resources. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
     <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div></div>
   </div>
   <div id="status">
@@ -1272,18 +1274,24 @@ class MachineSystem {
 // One player, with the same fixed-step controller on CPU and GPU. Position is at the feet.
 class Stickman {
   constructor(w,h){this.w=w;this.h=h;this.keys=new Set();this.reset();}
-  reset(){this.x=this.w*.5;this.y=8;this.vx=0;this.vy=0;this.ground=false;this.wet=false;this.wasUp=false;this.face=1;this.phase=0;this.rev=(this.rev||0)+1;this.keys.clear();}
-  input(){return [Number(this.keys.has('KeyD'))-Number(this.keys.has('KeyA')),Number(this.keys.has('KeyW')),Number(this.keys.has('KeyS')),0];}
-  packed(){return new Float32Array([this.x,this.y,this.vx,this.vy,...this.input(),+this.ground,+this.wet,this.face,+this.wasUp,0,0,0,0]);}
+  reset(){this.active=false;this.death=false;this.x=this.w*.5;this.y=8;this.vx=0;this.vy=0;this.ground=false;this.wet=false;this.wasUp=false;this.face=1;this.phase=0;this.rev=(this.rev||0)+1;this.keys.clear();}
+  place(x,y,wall){if(this.active||!Number.isFinite(x+y)||x<.85||x>this.w-.85||y<4.2||y>this.h||this.blocked(x,y,wall))return false;this.reset();this.x=x;this.y=y;this.active=true;return true;}
+  die(){this.active=false;this.death=true;this.vx=this.vy=0;this.keys.clear();}
+  blastHits(events,P){for(let k=0;k<events.length;k+=2){const mega=events[k]<0,bx=mega?-events[k]-1:events[k],by=events[k+1],radius=mega?Math.max(P.blastR,Math.hypot(this.w,this.h)*MELTDOWN_REACH):P.blastR;const dx=Math.max(0,Math.abs(this.x-bx)-.85),dy=Math.max(0,Math.abs(this.y-2.1-by)-2.1);if(Math.hypot(dx,dy)<radius)return true;}return false;}
+  input(){if(!this.active)return [0,0,0,0];return [Number(this.keys.has('KeyD'))-Number(this.keys.has('KeyA')),Number(this.keys.has('KeyW')),Number(this.keys.has('KeyS')),0];}
+  packed(){return new Float32Array([this.x,this.y,this.vx,this.vy,...this.input(),+this.ground,+this.wet,this.face,+this.wasUp,+this.active,0,0,0]);}
   blocked(x,y,wall){for(let yy=y-4.2;yy<=y+.001;yy+=.3)for(const xx of[x-.85,x,x+.85])if(wall(xx,yy))return true;return wall(x-.85,y)||wall(x+.85,y);}
   step(e){
+    if(!this.active)return;
+    if(this.blastHits(e.blastIn,e.P)||this.blastHits(e.blastOut,e.P)){this.die();return;}
     const [axis,up,down]=this.input(),wall=(x,y)=>e.isWall(x,y),near=[];
     let wet=0;const cy=this.y-2.1;
-    for(let yy=Math.max(0,Math.floor(this.y-5));yy<=Math.min(e.GH-1,Math.floor(this.y+1));yy++){
+    for(let yy=Math.max(0,Math.floor(this.y-6));yy<=Math.min(e.GH-1,Math.floor(this.y+2));yy++){
       const lo=Math.max(0,Math.floor(this.x-2)),hi=Math.min(e.GW-1,Math.floor(this.x+2));
       for(let j=e.cellStart[yy*e.GW+lo];j<e.cellStart[yy*e.GW+hi+1];j++){
         const t=e.attr[j]&TM;if(!t)continue;const dx=e.qx[j]-this.x,dy=e.qy[j]-cy;
-        if(Math.abs(dx)<1.3&&Math.abs(dy)<2.5){near.push(j);if(isFluid(t))wet++;}
+        if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN)&&Math.abs(dx)<1.15&&Math.abs(dy)<2.4){this.die();return;}
+        near.push(j);if(Math.abs(dx)<1.3&&Math.abs(dy)<2.5&&isFluid(t))wet++;
       }
     }
     this.wet=wet>3;this.vx+=Math.max(-.004,Math.min(.004,axis*.075-this.vx));this.vy+=e.P.gy;
@@ -1300,6 +1308,7 @@ class Stickman {
       else{const d=(dx>=0?1:-1)*Math.min(ox,.15);if(!this.blocked(x+d,y,wall))x+=d;this.vx*=.8;}
     }
     this.x=x;this.y=y;this.phase+=Math.abs(this.vx)*.65;
+    for(const j of near){const t=e.attr[j]&TM;if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN)&&Math.abs(e.qx[j]-x)<1.15&&Math.abs(e.qy[j]-(y-2.1))<2.4){this.die();return;}}
     // The player pushes nearby material through ordinary particle velocity, never writes walls.
     for(const j of near){const a=e.attr[j],t=a&TM;if(t===T_ICE||(a&A_FROZEN))continue;
       const dx=e.qx[j]-x,dy=e.qy[j]-(y-2.1),ox=1.03-Math.abs(dx),oy=2.28-Math.abs(dy);if(ox<=0||oy<=0)continue;
@@ -1308,9 +1317,10 @@ class Stickman {
       let vx=e.px[j]-e.qx[j],vy=e.py[j]-e.qy[j];const closing=Math.min(0,(vx-this.vx)*nx+(vy-this.vy)*ny);vx-=closing*nx;vy-=closing*ny;
       const speed=Math.hypot(vx,vy),cap=Math.min(1,e.P.maxStep/Math.max(speed,1e-9));e.qx[j]=px;e.qy[j]=py;e.px[j]=px+vx*cap;e.py[j]=py+vy*cap;
     }
-    if(!Number.isFinite(this.x+this.y)||this.y>this.h+10||this.y<-10||this.x<-10||this.x>this.w+10)this.reset();
+    if(!Number.isFinite(this.x+this.y)||this.y>this.h+10||this.y<-10||this.x<-10||this.x>this.w+10)this.die();
   }
   draw(c,sx,sy){
+    if(!this.active)return;
     c.save();c.scale(sx,sy);c.translate(this.x,this.y);const crouch=this.keys.has('KeyS')&&!this.wet?.45:0,hip=-1.7+crouch;
     const stride=this.ground?Math.sin(this.phase)*.65:0,spread=this.ground?.48:.65;
     // Two articulated legs, a short stem and a plain white box head. Deliberately no arms.
@@ -3461,13 +3471,23 @@ const SH_PLAYER = HDR + PLAYER_HDR + /* wgsl */`
 @group(0) @binding(3) var<storage,read> att: array<u32>;
 @group(0) @binding(4) var<storage,read> starts: array<u32>;
 @group(0) @binding(5) var<storage,read> walls: array<u32>;
+struct PlayerBlast { n:u32, pad:u32, pos:array<vec2f,64> };
+@group(0) @binding(6) var<storage,read> blast0:PlayerBlast;
+@group(0) @binding(7) var<storage,read> blast1:PlayerBlast;
+fn lethalBlast(event:vec2f,p:vec2f)->bool{let mega=event.x<0.0;let origin=vec2f(select(event.x,-event.x-1.0,mega),event.y);let radius=select(P.blastR,max(P.blastR,length(vec2f(f32(P.gw),f32(P.gh)))*MELTDOWN_REACH),mega);let delta=max(vec2f(0.0),abs(p-vec2f(0.0,2.1)-origin)-vec2f(0.85,2.1));return length(delta)<radius;}
+fn die(){player.reserved.x=0.0;player.vel=vec2f(0.0);}
+fn lethalContact(a:u32,q:vec2f,p:vec2f)->bool{let t=a&TM;return (t==4u||t==7u||t==18u)&&all(abs(q-(p-vec2f(0.0,2.1)))<vec2f(1.15,2.4));}
 fn wall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
 fn blocked(p:vec2f)->bool{for(var y=p.y-4.2;y<=p.y+0.001;y+=0.3){if(wall(vec2f(p.x-0.85,y))||wall(vec2f(p.x,y))||wall(vec2f(p.x+0.85,y))){return true;}}return wall(p+vec2f(-0.85,0.0))||wall(p+vec2f(0.85,0.0));}
 @compute @workgroup_size(1) fn main(){
+ if(player.reserved.x<0.5){return;}
+ for(var k=0u;k<min(blast0.n,64u);k++){if(lethalBlast(blast0.pos[k],player.pos)){die();return;}}
+ for(var k=0u;k<min(blast1.n,64u);k++){if(lethalBlast(blast1.pos[k],player.pos)){die();return;}}
  var p=player.pos;var v=player.vel;let axis=player.input.x;let up=player.input.y>0.5;let down=player.input.z>0.5;
- let limit=vec2f(f32(P.gw-1u),f32(P.gh-1u));let lo=vec2i(clamp(floor(p-vec2f(2.0,5.0)),vec2f(0.0),limit));let hi=vec2i(clamp(floor(p+vec2f(2.0,1.0)),vec2f(0.0),limit));
+ let limit=vec2f(f32(P.gw-1u),f32(P.gh-1u));let lo=vec2i(clamp(floor(p-vec2f(2.0,6.0)),vec2f(0.0),limit));let hi=vec2i(clamp(floor(p+vec2f(2.0,2.0)),vec2f(0.0),limit));
  var wet=0u;
  if(P.nUpper>0u){for(var y=lo.y;y<=hi.y;y++){for(var j=starts[u32(y)*P.gw+u32(lo.x)];j<starts[u32(y)*P.gw+u32(hi.x)+1u];j++){
+  if(lethalContact(att[j],st[j].zw,p)){die();return;}
   let d=st[j].zw-(p-vec2f(0.0,2.1));if(abs(d.x)<1.3&&abs(d.y)<2.5&&isFluid(att[j]&TM)){wet++;}
  }}}
  v.x+=clamp(axis*0.075-v.x,-0.004,0.004);v.y+=P.gy;
@@ -3477,11 +3497,11 @@ fn blocked(p:vec2f)->bool{for(var y=p.y-4.2;y<=p.y+0.001;y+=0.3){if(wall(vec2f(p
  if(!blocked(p+vec2f(v.x,0.0))){p.x+=v.x;}else{v.x=0.0;}
  if(!blocked(p+vec2f(0.0,v.y))){p.y+=v.y;}else{ground=v.y>=0.0;v.y=0.0;}
  if(P.nUpper>0u){for(var y=lo.y;y<=hi.y;y++){for(var j=starts[u32(y)*P.gw+u32(lo.x)];j<starts[u32(y)*P.gw+u32(hi.x)+1u];j++){
-  let a=att[j];if(!isGran(a&TM)&&(a&A_FROZEN)==0u){continue;}let d=p-vec2f(0.0,2.1)-st[j].zw;let overlap=vec2f(1.15,2.4)-abs(d);if(any(overlap<=vec2f(0.0))){continue;}
+  let a=att[j];if(lethalContact(a,st[j].zw,p)){die();return;}if(!isGran(a&TM)&&(a&A_FROZEN)==0u){continue;}let d=p-vec2f(0.0,2.1)-st[j].zw;let overlap=vec2f(1.15,2.4)-abs(d);if(any(overlap<=vec2f(0.0))){continue;}
   if(overlap.y<overlap.x){let shift=select(-1.0,1.0,d.y>=0.0)*min(overlap.y,0.25);if(!blocked(p+vec2f(0.0,shift))){p.y+=shift;}if(shift<0.0){ground=true;v.y=min(0.0,v.y);}else{v.y=max(0.0,v.y);}}
   else{let shift=select(-1.0,1.0,d.x>=0.0)*min(overlap.x,0.15);if(!blocked(p+vec2f(shift,0.0))){p.x+=shift;}v.x*=0.8;}
  }}}
- if(any(p<vec2f(-10.0))||p.x>f32(P.gw)+10.0||p.y>f32(P.gh)+10.0){p=vec2f(f32(P.gw)*0.5,8.0);v=vec2f(0.0);}
+ if(any(p<vec2f(-10.0))||p.x>f32(P.gw)+10.0||p.y>f32(P.gh)+10.0){die();return;}
  player.pos=p;player.vel=v;player.status=vec4f(select(0.0,1.0,ground),select(0.0,1.0,wet>3u),select(player.status.z,axis,axis!=0.0),select(0.0,1.0,up));
 }`;
 const SH_PLAYER_PUSH = HDR + PLAYER_HDR + /* wgsl */`
@@ -3490,6 +3510,7 @@ const SH_PLAYER_PUSH = HDR + PLAYER_HDR + /* wgsl */`
 @group(0) @binding(3) var<storage,read> player: Player;
 @group(0) @binding(4) var<storage,read> walls: array<u32>;
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ if(player.reserved.x<0.5){return;}
  let i=gid.x;if(i>=P.nUpper){return;}let a=att[i];let t=a&TM;if(t==0u||t==14u||(a&A_FROZEN)!=0u){return;}
  let s=st[i];let d=s.zw-(player.pos-vec2f(0.0,2.1));let overlap=vec2f(1.03,2.28)-abs(d);if(any(overlap<=vec2f(0.0))){return;}
  var n=vec2f(0.0,select(-1.0,1.0,d.y>=0.0));if(overlap.x<overlap.y){n=vec2f(select(-1.0,1.0,d.x>=0.0),0.0);}
@@ -3553,7 +3574,7 @@ const PEN_R = [0.7, 1.3, 2.2, 3.4, 5, 7.2, 10];
 const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4];   // spawn fill target per h x h cell; cargo is only ingested
 const GRAV = [[0, 1, '↓'], [0, 0, '0'], [0, -1, '↑']];
 const SPEEDS = [[0.5, '½'], [1, '1x'], [2, '2x']];
-const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate'];
+const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player'];
 const TYPE_OF = { water: T_WATER, oil: T_OIL, gravel: T_GRAVEL, fire: T_FIRE, nitro: T_NITRO, jello: T_JELLO, lava: T_LAVA,
                   sand: T_SAND, powder: T_POWDER, merc: T_MERC, dirt: T_DIRT, mud: T_MUD, snow: T_SNOW, ice: T_ICE, steam: T_STEAM, life: T_LIFE, meltdown: T_MELTDOWN };
 const PRM = makeParams();
@@ -3712,7 +3733,7 @@ class GpuSim {
       contact: [0, 1].map(d => bg(this.pContact, [u, st[O], at[O], this.starts, this.dens, X[d], X[1 - d]])),
       fric: [0, 1].map(d => bg(this.pFric, [u, st[O], at[O], this.starts, X[d], X[1 - d], this.dens])),
       final: [0, 1].map(d => [0, 1].map(w => bg(this.pFinal, [u, st[O], at[I], X[d], this.wallBuf, this.starts, this.dens, this.blast[1 - w], this.blast[w]]))),
-      player: bg(this.pPlayer,[u,this.playerBuf,st[O],at[I],this.starts,this.wallBuf]),
+      player: bg(this.pPlayer,[u,this.playerBuf,st[O],at[I],this.starts,this.wallBuf,this.blast[0],this.blast[1]]),
       playerPush: bg(this.pPlayerPush,[u,st[O],at[I],this.playerBuf,this.wallBuf]),
       machines: bg(this.pMachines,[u,st[O],at[I],this.rotorBuf,this.machineMap,this.wallBuf]),
       splat: bg(this.pSplat, [this.runi, st[p], at[p]]),
@@ -3752,7 +3773,7 @@ class GpuSim {
     this.pendBond.fill(BOND_EMPTY, k * NB, k * NB + NB);
     return true;
   }
-  clear() { this.nUpper = 0; this.alive = 0; this.pendN = 0; this.wakeAll = 4; }
+  clear() { this.nUpper = 0; this.alive = 0; this.pendN = 0; this.wakeAll = 4;this.bw=0;for(const b of this.blast)this.device.queue.writeBuffer(b,0,new Uint32Array(2)); }
   get count() { return this.alive; }
   get room() { return this.maxP - this.nUpper - this.pendN; }
   wake() { this.wakeAll = 4; }
@@ -3875,8 +3896,8 @@ class GpuSim {
         pass.setPipeline(this.pFinal); pass.setBindGroup(0, g.final[x][this.bw]); pass.dispatchWorkgroups(wg);
         this.bw = 1 - this.bw;
         if(hasRotors){pass.setPipeline(this.pMachines);pass.setBindGroup(0,g.machines);pass.dispatchWorkgroups(wg);pass.setPipeline(this.pRotors);pass.setBindGroup(0,this.bgRotors);pass.dispatchWorkgroups(1);}
-        pass.setPipeline(this.pPlayer);pass.setBindGroup(0,g.player);pass.dispatchWorkgroups(1);
-        pass.setPipeline(this.pPlayerPush);pass.setBindGroup(0,g.playerPush);pass.dispatchWorkgroups(wg);
+        if(player.active){pass.setPipeline(this.pPlayer);pass.setBindGroup(0,g.player);pass.dispatchWorkgroups(1);
+        pass.setPipeline(this.pPlayerPush);pass.setBindGroup(0,g.playerPush);pass.dispatchWorkgroups(wg);}
       }
       pass.end();
       if (physics) enc.copyBufferToBuffer(this.at[p], 0, this.at[1 - p], 0, this.nUpper * 4);
@@ -3884,8 +3905,8 @@ class GpuSim {
       this.cur = 1 - p;
     }
     if(hasRotors&&physics&&this.nUpper===0){for(let k=0;k<steps;k++){const rp=enc.beginComputePass();rp.setPipeline(this.pRotors);rp.setBindGroup(0,this.bgRotors);rp.dispatchWorkgroups(1);rp.end();}}
-    if(physics&&this.nUpper===0){for(let k=0;k<steps;k++){const pp=enc.beginComputePass();pp.setPipeline(this.pPlayer);pp.setBindGroup(0,this.bg[this.cur].player);pp.dispatchWorkgroups(1);pp.end();}}
-    const playerRev=player.rev;let playerRead=this.playerReads.find(r=>!r.busy);
+    if(physics&&this.nUpper===0){enc.clearBuffer(this.blast[0]);enc.clearBuffer(this.blast[1]);if(player.active)for(let k=0;k<steps;k++){const pp=enc.beginComputePass();pp.setPipeline(this.pPlayer);pp.setBindGroup(0,this.bg[this.cur].player);pp.dispatchWorkgroups(1);pp.end();}}
+    const playerRev=player.rev;let playerRead=player.active?this.playerReads.find(r=>!r.busy):null;
     if(playerRead){playerRead.busy=true;enc.copyBufferToBuffer(this.playerBuf,0,playerRead.buf,0,64);}
     let rotorRead=null;const rotorRev=machines.rev;
     if(hasRotors){rotorRead=this.rotorReads.find(r=>!r.busy);if(rotorRead){rotorRead.busy=true;enc.copyBufferToBuffer(this.rotorBuf,0,rotorRead.buf,0,ROTOR_MAX*ROTOR_BYTES);}}
@@ -3935,7 +3956,7 @@ class GpuSim {
     q.submit([enc.finish()]);
     if(playerRead){const slot=playerRead;slot.buf.mapAsync(GPUMapMode.READ).then(()=>{
       const a=new Float32Array(slot.buf.getMappedRange());
-      if(playerRev===player.rev&&f>=(this.lastPlayerFrame||0)){this.lastPlayerFrame=f;player.x=a[0];player.y=a[1];player.vx=a[2];player.vy=a[3];player.ground=a[8]>.5;player.wet=a[9]>.5;player.face=a[10];player.phase+=Math.abs(a[2])*steps*.65;}
+      if(playerRev===player.rev&&f>=(this.lastPlayerFrame||0)){this.lastPlayerFrame=f;if(player.active&&a[12]<.5){player.death=true;player.keys.clear();}player.active=a[12]>.5;player.x=a[0];player.y=a[1];player.vx=a[2];player.vy=a[3];player.ground=a[8]>.5;player.wet=a[9]>.5;player.face=a[10];player.phase+=Math.abs(a[2])*steps*.65;}
       slot.buf.unmap();slot.busy=false;
     },()=>{slot.busy=false;});}
     if (this.pendingQ) { const slot = this.pendingQ; this.pendingQ = null;
@@ -3978,7 +3999,7 @@ class CpuSim {
     this.fw = new Float32Array(this.FW * this.FH); this.fo = new Float32Array(this.FW * this.FH); this.fn = new Float32Array(this.FW * this.FH); this.flv = new Float32Array(this.FW * this.FH); this.fjl = new Float32Array(this.FW * this.FH); this.fht = new Float32Array(this.FW * this.FH); this.mat = new Uint8Array(this.FW * this.FH); this.matGene = new Uint8Array(this.FW * this.FH); this.fsp = new Float32Array(this.FW * this.FH); this.fmc = new Float32Array(this.FW * this.FH); this.fmd = new Float32Array(this.FW * this.FH); this.fml = new Float32Array(this.FW * this.FH);
   }
   add(x, y, t, vx = 0, vy = 0, gene = 0) { const n = this.e.n; this.e.add(x, y, t, vx, vy, gene); return this.e.n > n; }
-  clear() { this.e.n = 0; }
+  clear() { this.e.n = 0;this.e.blastIn=[];this.e.blastOut=[]; }
   get count() { return this.e.n; }
   get room() { return this.maxP - this.e.n; }
   wake() { this.e.wakeAll = 4; }
@@ -4314,11 +4335,13 @@ function applyInput(steps) {
     let vx = (x1 - x0) / st * 0.5, vy = (y1 - y0) / st * 0.5; const vl = Math.hypot(vx, vy); if (vl > 0.2) { vx *= 0.2 / vl; vy *= 0.2 / vl; }
     if (t === T_FIRE) vy -= 0.04 * Math.sign(PRM.gy || 0);
     for (let k = 1; k <= n; k++) stampBrush(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, R, t, vx, vy, strain);
-  } else if(name==='turbine'||name==='gate'){if(fresh){if(!machines.place(name,x1,y1))showMsg('Leave space around machines. Limit: 64 turbines and 64 gates.');else showMsg(name==='turbine'?'Flywheel placed · Flow drives P. Wire power into M+ or M− to drive the blades.':'NAND placed · Wire A and B on the left; output on the right.');}}
+  } else if(name==='player'){if(fresh){if(player.active)showMsg('Only one player at a time.');else if(player.place(x1,y1,wallAt))showMsg('WASD · A/D walk · W jump/swim · S dive.');else showMsg('Leave room for the player’s head and legs.');}}
+  else if(name==='turbine'||name==='gate'){if(fresh){if(!machines.place(name,x1,y1))showMsg('Leave space around machines. Limit: 64 turbines and 64 gates.');else showMsg(name==='turbine'?'Flywheel placed · Flow drives P. Wire power into M+ or M− to drive the blades.':'NAND placed · Wire A and B on the left; output on the right.');}}
   else if(name==='wire'){machines.wireLine(x0,y0,x1,y1);}
   else if (name === 'block') { paintLine(x0, y0, x1, y1, R, 1); }
   else if (name === 'erase') {
     paintLine(x0, y0, x1, y1, R, 0);
+    if(player.active){const dx=x1-x0,dy=y1-y0,len=dx*dx+dy*dy,u=Math.max(0,Math.min(1,((player.x-x0)*dx+(player.y-2.1-y0)*dy)/Math.max(len,1e-9)));if(Math.hypot(player.x-x0-u*dx,player.y-2.1-y0-u*dy)<R+1)player.reset();}
     for(let k=0;k<=n;k++)machines.erase(x0+(x1-x0)*k/n,y0+(y1-y0)*k/n,R);
     Object.assign(tool, { kind: 1, x: x1, y: y1, r: R + 0.25, vx: (x1 - x0) / st, vy: (y1 - y0) / st, len: st, str: 0 });
   } else if (name === 'wind') {
@@ -4460,12 +4483,6 @@ $('o-clear').onclick = () => clearAll();
 $('o-demo').onclick = () => loadDemo();
 $('o-life-demo').onclick = () => loadLifeDemo();
 $('o-power-demo').onclick = () => loadPowerDemo();
-$('o-player-reset').onclick = () => {
-  player.reset();
-  for(let y=8;y<H-1;y+=5)for(let d=0;d<W/2;d+=4)for(const sign of[-1,1]){
-    const x=W/2+d*sign;if(!player.blocked(x,y,wallAt)){player.x=x;player.y=y;return;}
-  }
-};
 $('o-walls').onclick = () => { edgeOn = !edgeOn; refreshUI(); };
 window.addEventListener('keydown', e => {
   if(e.ctrlKey||e.metaKey||e.altKey||(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]')))return;
@@ -4565,7 +4582,8 @@ function drawCursor() {
   c.lineWidth = Math.max(1, s * 0.18);
   c.strokeStyle = name === 'erase' ? 'rgba(255,155,107,.9)' : 'rgba(255,255,255,.75)';
   c.beginPath();
-  if(name==='turbine'){c.moveTo(x-4*s,y);c.lineTo(x+4*s,y);c.moveTo(x,y-4*s);c.lineTo(x,y+4*s);}
+  if(name==='player'){c.rect(x-.85*s,y-4.2*s,1.7*s,1.5*s);c.moveTo(x,y-2.7*s);c.lineTo(x,y-1.7*s);c.lineTo(x-.5*s,y);c.moveTo(x,y-1.7*s);c.lineTo(x+.5*s,y);}
+  else if(name==='turbine'){c.moveTo(x-4*s,y);c.lineTo(x+4*s,y);c.moveTo(x,y-4*s);c.lineTo(x,y+4*s);}
   else if(name==='gate'){c.rect(x-2*s,y-2*s,4*s,4*s);}
   else if(name==='wire'){const q=machines.snap(ptr.x,ptr.y);c.arc(q[0]*s,q[1]*s,.4*s,0,Math.PI*2);}
   else if (name === 'wind') { c.setLineDash([s * 0.6, s * 0.6]); c.arc(x, y, (PEN_R[ui.pen] * 1.5 + 2) * s, 0, Math.PI * 2); }
@@ -4585,6 +4603,7 @@ function tick(now) {
   try { sim.frame(steps, tool, ui.view); } catch (err) { showMsg('<b>render error:</b> ' + err.message); throw err; }
   if (sim.lost) showMsg('<b>GPU device lost</b> — reload the page to restart');
   machines.advance(steps);
+  if(player.death){showMsg('Player died · Select Player to place another.');player.death=false;}
   drawCursor();
   const fl = sim.flash || 0;
   if (fl > 0.12 && !reduceMotion) { const k = fl * 5; stage.style.transform = `translate(${(Math.random() - 0.5) * k}px, ${(Math.random() - 0.5) * k}px)`; shaking = true; }
