@@ -172,7 +172,6 @@
     </div>
   </div>
   <div id="life-guide">
-    <button class="cell" id="o-life-demo">Life lab</button><button class="cell" id="o-power-demo">Power lab</button>
     <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. All five organelles can combine freely. Organelles steer movement toward nearby resources. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
     <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div></div>
   </div>
@@ -4380,17 +4379,6 @@ function seedCulture(x0, y0, x1, y1, liquid, g) {
     spawnParticle(x, y, liquid, 0, 0);
   }
 }
-function loadLifeDemo() {
-  machines.clear();
-  clearAll();
-  paintRect(12, 87, 71, 89); paintRect(12, 32, 14, 89); paintRect(69, 32, 71, 89);
-  paintRect(88, 87, 147, 89); paintRect(88, 32, 90, 89); paintRect(145, 32, 147, 89);
-  seedCulture(15, 70, 68, 87, T_WATER, 0x27D1);
-  seedCulture(91, 70, 144, 87, T_OIL, 0x6FD9);
-  lifeBlob(28, 45, 35, 51, 0x61C4); lifeBlob(105, 45, 112, 51, 0x6DCD);
-  wallsDirty = true;
-  showMsg('LIFE LAB · <b>Violet: chemical digestion</b> · White horns: predators · Death returns jelly');
-}
 function loadDemo() {
   player.reset(); machines.clear();
   epoch++; sim.clear(); occReset();
@@ -4483,8 +4471,6 @@ $('o-view').onclick = () => { ui.view = (ui.view + 1) % VIEWS.length; refreshUI(
 $('o-run').onclick = () => { ui.running = !ui.running; refreshUI(); };
 $('o-clear').onclick = () => clearAll();
 $('o-demo').onclick = () => loadDemo();
-$('o-life-demo').onclick = () => loadLifeDemo();
-$('o-power-demo').onclick = () => loadPowerDemo();
 $('o-walls').onclick = () => { edgeOn = !edgeOn; refreshUI(); };
 window.addEventListener('keydown', e => {
   if(e.ctrlKey||e.metaKey||e.altKey||(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]')))return;
@@ -4553,25 +4539,6 @@ function drawMachines(c,sx,sy){
     port(g.x-3,g.y-1,g.a?1:0,'A');port(g.x-3,g.y+1,g.b?1:0,'B');port(g.x+3,g.y,machines.signal(g.x+3,g.y),'Q');
   }c.restore();
 }
-function loadPowerDemo(){
-  clearAll();ui.grav=0;ui.running=true;refreshUI();
-  // Sealed working-fluid loops: a hot sump, offset steam riser, condenser shelf,
-  // and gravity return. No particle spawning or automatic refilling after setup.
-  for(const x of [14,86]){
-    paintLine(x,20,x+40,26,0.8);paintLine(x,20,x,82,0.8);
-    paintLine(x+40,26,x+40,74,0.8);paintLine(x,82,x+40,74,0.8);
-    paintRect(x+20,40,x+21,69);                         // separates riser and return
-    paintLine(x+10,32,x+34,38,0.65);                  // catches condensate, drains right
-    paintLine(x+4,65,x+10,59,0.65);                   // aims steam at the blade; left gap drains condensate
-    fillRect(x+2,77,x+10,79.5,T_MELTDOWN,.52);         // heavy, permanent heat bed
-    fillRect(x+2,69,x+18,75,T_WATER,.50);
-    machines.place('turbine',x+15,53);
-  }
-  machines.place('gate',77,83);
-  for(const pts of [[[34,53],[70,53],[70,82],[74,82]],[[106,53],[142,53],[142,92],[68,92],[68,84],[74,84]],[[80,83],[97,83]]])for(let k=1;k<pts.length;k++)machines.wireLine(...pts[k-1],...pts[k]);
-  machines.advance(8);showMsg('CLOSED-LOOP POWER · Meltdown boils water → steam spins the turbines → steam condenses → water drains back to the hot bins. No refills.');
-}
-
 function drawCursor() {
   const c = octx, w = overlay.width, h = overlay.height;
   c.clearRect(0, 0, w, h);
@@ -4638,8 +4605,8 @@ async function boot() {
       ? 'CPU mode · GPU startup failed: ' + reason.split('\n')[0].slice(0,220)
       : 'CPU mode · WebGPU is not available in this page; running on CPU.';
   }
-  if (sim.kind === 'GPU') { showMsg('Drag to pour &middot; right-drag erases &middot; feed the <b>Life</b> in the terrarium, or set the green vat alight'); hintShown = true; }
-  refreshUI(); loadDemo(); layout();
+  if (sim.kind === 'GPU') { showMsg('Drag to pour &middot; right-drag erases &middot; choose an element to begin'); hintShown = true; }
+  refreshUI(); clearAll(); layout();
   window.__slurry = { get sim() { return sim; }, ui, occ, player };
   if (!window.__noAuto) requestAnimationFrame(t => { last = t; tick(t); });
 }
