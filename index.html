@@ -208,7 +208,7 @@ const A_FROZEN = 1 << 5; // an unused state bit; genome and vitality remain inta
 // Former cosmetic bits 9-12 are the rare clause: rigid, jellyfish, acid defense, plantlike.
 // Organelle presence is binary and inherited; its expressed size follows stored fuel.
 // Life particles ARE the stabilizing cytoplasm. Only surface particles form membrane bonds.
-// Jelly is the universal food currency. Appearance bit 3 still favours oil buoyancy.
+// Jelly is the universal food currency. Rare defense flags do not change oil buoyancy.
 const geneA = a => (a >>> 8) & 255, geneB = a => (a >>> 24) & 0xBB;
 const O_CHEM = 1, O_PRED = 2, O_THERMO = 4, O_RADIO = 8, O_ROLL = 16, O_RIGID = 32, O_JELLY = 64, O_ACID = 128, O_PLANT = 256;
 const A_APPEND = 64; // Life reuses the sleep flag for flexible appendages / roots.
@@ -2111,7 +2111,7 @@ ${SPAN}
           else if (tj == 14u || tj == 13u) { envh -= o; }
           else if (lj && (aj & A_FROZEN) != 0u) { envh -= o * 0.35; }
           else if (tj == 2u && (aj & A_LIT) != 0u) { envh += o; }
-          if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, select(0.65, 1.05, (att[i] & (8u << 8u)) != 0u), tj == 2u); }
+          if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, 0.85, tj == 2u); }
           if (hornJ && rl < 0.62) { drain += o * 3.0 / strength; }
         }
         let score = select(rl, rl - 2.0, linked);
@@ -2419,7 +2419,7 @@ var<workgroup> ltot: u32;
           else if (tj == 14u || tj == 13u) { envh -= o; }
           else if (lj && (aj & A_FROZEN) != 0u) { envh -= o * 0.35; }
           else if (tj == 2u && (aj & A_LIT) != 0u) { envh += o; }
-          if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, select(0.65, 1.05, (att[i] & (8u << 8u)) != 0u), tj == 2u); }
+          if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, 0.85, tj == 2u); }
           if (hornJ && rl < 0.62) { drain += o * 3.0 / strength; }
         }
         let score = select(rl, rl - 2.0, linked);
