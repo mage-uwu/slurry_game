@@ -16,9 +16,16 @@ Open **http://localhost:8000** in your browser. The game uses WebGPU when availa
 
 Choose materials and paint them into the world. Left/right clicking a material assigns it to that mouse button. Space pauses; `[` and `]` change brush size. The game opens to an empty world. Use **Demo** if you want a sample scene.
 
-Select **Player** in the element menu and click to place the white box-headed character. No player spawns automatically, and only one can exist at a time. Control him with **A/D** to walk, **W** to jump or swim upward, and **S** to dive or fast-fall. **Fire, lava, Meltdown and explosions kill him.** After death, select Player and click to place another. The old W material shortcut is now **K**. Movement pauses with the simulation, and releasing keys or switching away clears held movement.
+Select **Player** in the element menu and click to place the white box-headed character. No player spawns automatically, and only one can exist at a time. Control him with **A/D** to walk, **W** to jump or swim upward, and **S** to dive or fast-fall. **Fire, lava, Meltdown, acid and explosions kill him.** After death, select Player and click to place another. The old W material shortcut is now **K**. Movement pauses with the simulation, and releasing keys or switching away clears held movement.
 
-Cells have five independently combinable organelles: chemophile, predator, thermophile, radiophile and roller. They swim, feed, reproduce and freeze/thaw. Fire and lava immediately turn exposed non-thermophile life into jelly.
+Cells have nine independently combinable organelles. The original five are chemophile, predator, thermophile, radiophile and roller. Four rare organelles occupy a separate four-bit clause in the existing genome:
+
+- **Rigid body (6%)**: a fixed ivory shell that resists predator punctures, with flexible physical flagella.
+- **Jellyfish (5%)**: a pulsing violet bell with trailing particle tendrils.
+- **Acid defense (4%)**: chartreuse glands spray acid droplets toward nearby predators; the carrier is immune. Acid neutralizes into water after a short lifetime.
+- **Plantlike (5%)**: green moss that suppresses swimming, anchors on dry surfaces, grows roots through terrain, makes free jelly, and launches seeds that germinate on dry ground.
+
+Traits are sampled independently, so hybrids can inherit any of the 512 combinations. Plantlike takes precedence over active locomotion. Rare cells are placed as complete anatomy with one click of the Life tool; ordinary life can still be painted. Growth and sprays share a capped emission queue, and rigid shape calculations visit each colony's particles in linear time. They swim, feed, reproduce and freeze/thaw. Fire and lava immediately turn exposed non-thermophile life into jelly.
 
 All game code, shaders and interface styles are in `index.html`.
 
@@ -28,4 +35,6 @@ With Node.js installed:
 
 ```sh
 node tests/player.test.cjs
+node tests/mercury.test.cjs
+node tests/rare-organelles.test.cjs
 ```
