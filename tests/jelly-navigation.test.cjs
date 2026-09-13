@@ -11,8 +11,8 @@ for(const g of [0,2,4,0x400,0x4000,0x65ee]){const {e,i,h}=scene(g,[[14,20,6]],tr
 assert(scene(0,[[14,20,6],[31,20,6]]).h[0]<-.99);
 assert(scene(0,[[20,20,6]]).h.every(v=>v===0));
 assert.deepEqual(scene(0,[[2,20,6]]).h,[1,0]);
-for(const [g,t]of [[0x400,2],[0x20,7],[0x40,18]]){const {e,i,h}=scene(g,[[14,20,6],[23,20,t]]);assert(h[0]<-.99);const j=Array.from(e.attr.subarray(0,e.n)).findIndex(a=>(a&31)===6);e.attr[j]=0;e.lifeClock+=6;e.senseFood();assert(e.lifeNav[i*2]>.99,'specialist must resume its resource');}
-console.log('PASS frozen cells, nearest cached jelly, arrival, sensing radius and specialist fallback');
+for(const [g,t]of [[0x400,2],[0x20,7],[0x40,18]]){const {e,i,h}=scene(g,[[18,20,6],[29,20,t]]);assert(h[0]>.99,'specialist target takes priority even when jelly is closer');const j=Array.from(e.attr.subarray(0,e.n)).findIndex(a=>(a&31)===t);e.attr[j]=0;e.lifeClock+=6;e.senseFood();assert(e.lifeNav[i*2]<-.99,'jelly is the second-choice target');}
+console.log('PASS frozen cells, nearest cached jelly, arrival, sensing radius, specialist priority and jelly fallback');
 // A death-generated jelly parcel enters the same cache on the next scheduled refresh.
 {const {e,i}=scene(0,[[14,20,3]]);const j=i===0?1:0;e.attr[j]=deadJelly(mkLife(0x400,100));e.lifeClock+=6;e.senseFood();assert(e.lifeNav[i*2]<-.99);e.attr[j]=0;e.lifeClock+=6;e.senseFood();assert.equal(e.lifeNav[i*2],1);assert.equal(e.lifeNav[i*2+1],0);}
 console.log('PASS dead-cell jelly is discovered and eaten/removed jelly expires from the cache');
