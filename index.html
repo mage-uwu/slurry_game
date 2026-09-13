@@ -172,7 +172,7 @@
     </div>
   </div>
   <div id="life-guide">
-    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown, acid and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. Rare traits: ivory rigid shells with flexible flagella (6%), jellyfish bells and trailing tendrils (5%), acid-spraying glands with acid immunity (4%), and rooted moss plants that make jelly and burst into seeds (5%). All nine organelles combine freely; plantlike suppresses swimming. Every mobile cell seeks nearby jelly first, using the shared food cache. Organelles steer toward other resources when no jelly is in sensing range. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
+    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown, acid and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. Rare traits: ivory rigid shells with flexible flagella (6%), jellyfish bells and trailing tendrils (5%), acid-spraying glands with acid immunity (4%), and rooted moss plants that make jelly and burst into seeds (5%). All nine organelles combine freely; plantlike suppresses swimming. Specialists prefer their organelle-specific resources; all mobile cells seek nearby jelly when no specialist target is in range, using the same shared food cache. Jelly feeds every strain; dead cells become jelly. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
     <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div></div>
   </div>
   <div id="status">
@@ -564,18 +564,16 @@ class Engine {
       if((a&A_FROZEN)||(org&O_PLANT))continue;
       const cx=Math.max(0,Math.min(cw-1,Math.floor(px[i]/4))),cy=Math.max(0,Math.min(ch-1,Math.floor(py[i]/4)));
       const base=(cy*cw+cx)*24;let best=144,dx=0,dy=0;
-      // Universal snack first: one cached candidate, no per-particle world search.
-      const jelly=base+20;
-      if(targets[jelly+3]){const x=targets[jelly]-px[i],y=targets[jelly+1]-py[i],d2=x*x+y*y;
-        if(d2<144){let hx=0,hy=0;if(d2>0.01){const len=Math.sqrt(d2);hx=x/len+h[0]*0.08;hy=y/len+h[1]*0.08;const norm=Math.hypot(hx,hy);hx/=norm;hy/=norm;}this.lifeNav[out]=hx;this.lifeNav[out+1]=hy;continue;}}
-      // Otherwise retain the five specialist candidates.
+      // Specialist targets keep priority; universal jelly is the fallback.
       for(let slot=0;slot<5;slot++) {
         if(!(org&(slot===0?O_CHEM:slot<3?O_PRED:slot===3?O_THERMO:O_RADIO)))continue;
         const k=base+slot*4;if(!targets[k+3]||(slot>0&&slot<3&&targets[k+2]===g))continue;
         const x=targets[k]-px[i],y=targets[k+1]-py[i],d2=x*x+y*y;
         if(d2>0.01&&d2<best){best=d2;dx=x;dy=y;}
       }
-      if(best<144){const len=Math.sqrt(best),x=dx/len+h[0]*0.08,y=dy/len+h[1]*0.08,norm=Math.hypot(x,y);this.lifeNav[out]=x/norm;this.lifeNav[out+1]=y/norm;}
+      if(best===144){const jelly=base+20;if(targets[jelly+3]){const x=targets[jelly]-px[i],y=targets[jelly+1]-py[i],d2=x*x+y*y;if(d2<best){best=d2;dx=x;dy=y;}}}
+      if(best<=0.01){this.lifeNav[out]=0;this.lifeNav[out+1]=0;}
+      else if(best<144){const len=Math.sqrt(best),x=dx/len+h[0]*0.08,y=dy/len+h[1]*0.08,norm=Math.hypot(x,y);this.lifeNav[out]=x/norm;this.lifeNav[out+1]=y/norm;}
     }
     // A traveling skin stroke has a tangential contact velocity, like a rotor's rim.
     // Cache it once; it is geometry-driven and does not depend on the surrounding material.
@@ -1751,10 +1749,6 @@ fn cachedFoodHeading(a: u32, p: vec2f, surface: f32, fallback: vec2f) -> vec2f {
   let cw=(P.gw+3u)/4u;let ch=(P.gh+3u)/4u;
   let c=vec2u(clamp(floor(p/4.0),vec2f(0.0),vec2f(f32(cw-1u),f32(ch-1u))));
   let base=0x100000u+(c.y*cw+c.x)*24u;let g=genome(a);
-  // Jelly uses the same bounded cache for every mobile genome, including organelle-free cells.
-  let jelly=base+20u;
-  if(idx[jelly+3u]!=0u){let q=vec2f(bitcast<f32>(idx[jelly]),bitcast<f32>(idx[jelly+1u]));let d=q-p;let d2=dot(d,d);
-    if(d2<144.0){if(d2<=0.01){return vec2f(0.0);}return normalize(d/sqrt(d2)+fallback*0.08);}}
   var best=144.0;var delta=vec2f(0.0);
   for(var slot=0u;slot<5u;slot++){
     if((org&select(select(O_PRED,O_CHEM,slot==0u),select(O_THERMO,O_RADIO,slot==4u),slot>=3u))==0u){continue;}
@@ -1763,7 +1757,12 @@ fn cachedFoodHeading(a: u32, p: vec2f, surface: f32, fallback: vec2f) -> vec2f {
     let q=vec2f(bitcast<f32>(idx[k]),bitcast<f32>(idx[k+1u]));let d=q-p;let d2=dot(d,d);
     if(d2>0.01&&d2<best){best=d2;delta=d;}
   }
-  if(best<144.0){return normalize(delta/sqrt(best)+fallback*0.08);}return fallback;
+  if(best<144.0){return normalize(delta/sqrt(best)+fallback*0.08);}
+  // Jelly uses the same bounded cache for every mobile genome, including organelle-free cells.
+  let jelly=base+20u;
+  if(idx[jelly+3u]!=0u){let q=vec2f(bitcast<f32>(idx[jelly]),bitcast<f32>(idx[jelly+1u]));let d=q-p;let d2=dot(d,d);
+    if(d2<144.0){if(d2<=0.01){return vec2f(0.0);}return normalize(d/sqrt(d2)+fallback*0.08);}}
+  return fallback;
 }
 `;
 const SH_DENSITY = HDR + /* wgsl */`
@@ -1989,7 +1988,7 @@ const SH_CUES = HDR + /* wgsl */`
   cues[c*6u] = chem; cues[c*6u+1u] = lo; cues[c*6u+2u] = hi;cues[c*6u+3u]=heat;cues[c*6u+4u]=rad;cues[c*6u+5u]=jelly;
 }`;
 // Search once per coarse cell: chemical, two prey strains, heat, Meltdown and jelly.
-// All organisms check universal jelly first, then their specialist candidates.
+// All organisms check their specialist candidates first, then universal jelly.
 const SH_SENSE = HDR + /* wgsl */`
 @group(0) @binding(1) var<storage, read> cues: array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> idx: array<u32>;
