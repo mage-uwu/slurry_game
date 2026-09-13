@@ -16,6 +16,16 @@ Open **http://localhost:8000** in your browser. The game uses WebGPU when availa
 
 Choose materials and paint them into the world. Left/right clicking a material assigns it to that mouse button. Space pauses; `[` and `]` change brush size. Use **Life lab** and **Power lab** for built-in scenes.
 
+Control the white box-headed character with **A/D** to walk, **W** to jump or swim upward, and **S** to dive or fast-fall. **Respawn** returns him to clear space. The old W material shortcut is now **K**. Movement pauses with the simulation, and releasing keys or switching away clears held movement.
+
 Cells have five independently combinable organelles: chemophile, predator, thermophile, radiophile and roller. They swim, feed, reproduce and freeze/thaw. Fire and lava immediately turn exposed non-thermophile life into jelly.
 
 All game code, shaders and interface styles are in `index.html`.
+
+## Controller checks
+
+With Node.js installed:
+
+```sh
+node tests/player.test.cjs
+```
