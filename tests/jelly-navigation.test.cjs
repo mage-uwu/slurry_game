@@ -1,6 +1,6 @@
 // node tests/jelly-navigation.test.cjs
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0];
+const source=fs.readFileSync(path.join(__dirname,'..','slurry','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0];
 const m={exports:{}};new Function('module',source+'\nmodule.exports={Engine,makeParams,mkLife,organelles,strainHeading,deadJelly};')(m);
 const {Engine,makeParams,mkLife,organelles,strainHeading,deadJelly}=m.exports;
 const bits=[0x400,0x4000,0x20,0x40,0x80,2,4,8,16];

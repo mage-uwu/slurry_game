@@ -1,4 +1,4 @@
-# Slurry
+# Monomage / Slurry
 
 A single-file particle physics sandbox with fluids, solids, fire, evolving cells, Meltdown, turbines, motors, wires and NAND gates.
 
@@ -10,7 +10,7 @@ No build step or package installation is required. From this directory, run:
 python3 -m http.server 8000
 ```
 
-Open **http://localhost:8000** in your browser. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve `index.html` over HTTPS for WebGPU access.
+Open **http://localhost:8000** for the Monomage landing page, or **http://localhost:8000/slurry/** to play. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve the repository root over HTTPS for WebGPU access. No build command is needed: `/index.html` is the landing page and `/slurry/index.html` is the complete game. On Cloudflare, keep the existing root output directory; `/slurry/` resolves to the game automatically.
 
 ## Play
 
@@ -33,7 +33,7 @@ Traits are sampled independently, so hybrids can inherit any of the 512 combinat
 
 **Spontaneous life:** jelly touching Meltdown has a very small chance (1 in 100,000 per birth roll) to become a new life particle, even with no existing cells in the world. The new genome uses the same independent trait probabilities as the Life brush. Each jelly particle gets one roll regardless of how many Meltdown particles touch it. The contact flag reuses the existing physics payload; a successful reaction converts the jelly in place before it melts, with no new particle allocation, neighbor search or simulation pass.
 
-All game code, shaders and interface styles are in `index.html`.
+All game code, shaders and interface styles are in `slurry/index.html`. The landing page in `index.html` is static HTML/CSS with an ASCII banner and terrarium illustration; it loads no game engine, scripts, fonts or external assets.
 
 ## Controller checks
 

@@ -8,7 +8,7 @@ import subprocess
 import numpy as np
 import wgpu
 
-page = Path(__file__).resolve().parents[1] / 'index.html'
+page = Path(__file__).resolve().parents[1] / 'slurry' / 'index.html'
 extract = r"""
 const fs=require('fs');const s=fs.readFileSync(process.argv[1],'utf8').split('<script>')[1].split('</script>')[0];
 console.log(JSON.stringify(new Function(s.slice(0,s.indexOf('const TOOLS'))+';return {list:SH_RARE_LIST,body:SH_UNKNOWN_BODY,base:UNKNOWN_STATS,words:RARE_HEAD_WORDS};')()));

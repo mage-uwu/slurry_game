@@ -1,5 +1,5 @@
 // Run with Node.js: node tests/mercury.test.cjs
-const assert=require('node:assert/strict'),fs=require('fs'),src=fs.readFileSync(require('node:path').join(__dirname,'..','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};new Function('module',src+'\nmodule.exports={Engine,makeParams};')(m);const {Engine,makeParams}=m.exports;
+const assert=require('node:assert/strict'),fs=require('fs'),src=fs.readFileSync(require('node:path').join(__dirname,'..','slurry','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};new Function('module',src+'\nmodule.exports={Engine,makeParams};')(m);const {Engine,makeParams}=m.exports;
 for(const mode of ['fall','settle','sink']){
  const e=new Engine(40,40,2500,makeParams({jitter:0}));
  for(let y=mode==='settle'?36:10;y<(mode==='settle'?39:13);y+=.42)for(let x=16;x<22;x+=.42)e.add(x,y,10);

@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};
+const source=fs.readFileSync(path.join(__dirname,'..','slurry','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};
 new Function('module',source+'\nmodule.exports={Engine,makeParams,mkLife,genome,vitOf,isUnknown,organelles,randomGenome,lifeGate,UNKNOWN_GENOME,UNKNOWN_DIGEST,UNKNOWN_CHANCE,O_UNKNOWN,A_FROZEN};')(m);
 const {Engine,makeParams,mkLife,genome,vitOf,isUnknown,organelles,randomGenome,lifeGate,UNKNOWN_GENOME:G,UNKNOWN_DIGEST:D,UNKNOWN_CHANCE,O_UNKNOWN,A_FROZEN}=m.exports;
 const engine=()=>new Engine(40,40,4096,makeParams({gy:0,jitter:0,lifeCost:0}));

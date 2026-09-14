@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-const text=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};
+const text=fs.readFileSync(path.join(__dirname,'..','slurry','index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0],m={exports:{}};
 new Function('module',text+';module.exports={Engine,makeParams,genome,originGenome,bioHash,MELTDOWN_LIFE_CHANCE};')(m);
 const{Engine,makeParams,genome,originGenome,bioHash,MELTDOWN_LIFE_CHANCE:chance}=m.exports;
 assert(chance>0&&chance<=.00002);
