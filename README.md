@@ -29,6 +29,8 @@ Mobile cells keep their organelle-specific resource targets as first choice and 
 
 Traits are sampled independently, so hybrids can inherit any of the 512 combinations. Plantlike takes precedence over active locomotion. Rare cells are placed as complete anatomy with one click of the Life tool; ordinary life can still be painted. Growth and sprays share a capped emission queue, and rigid shape calculations visit each colony's particles in linear time. They swim, feed, reproduce and freeze/thaw. Fire and lava immediately turn exposed non-thermophile life into jelly.
 
+**??? (0.1% of new Life strains)** is a reserved ultra-rare genome with charcoal cytoplasm, a bright white membrane and blinking eye organelles. It admits every particle material, including armored or frozen life, ice, acid and Meltdown. Matter stays chemically active while slowly passing through its membrane; undigested nitro can still explode. Absorbed particles enlarge the same body without creating daughters, seeds or new particles. It cannot starve, freeze, mutate or die from heat, acid, predators or explosions. Gravity and collisions still apply, and the editor can erase it. Feeding uses bounded local grid queries and the existing rare-body passes, with no new GPU buffers.
+
 All game code, shaders and interface styles are in `index.html`.
 
 ## Controller checks
@@ -40,4 +42,5 @@ node tests/player.test.cjs
 node tests/mercury.test.cjs
 node tests/rare-organelles.test.cjs
 node tests/jelly-navigation.test.cjs
+node tests/unknown.test.cjs
 ```
