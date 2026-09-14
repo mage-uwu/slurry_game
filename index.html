@@ -172,7 +172,7 @@
     </div>
   </div>
   <div id="life-guide">
-    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown, acid and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. Rare traits: ivory rigid shells with flexible flagella (6%), jellyfish bells and trailing tendrils (5%), acid-spraying glands with acid immunity (4%), and rooted moss plants that make jelly and burst into seeds (5%). All nine organelles combine freely; plantlike suppresses swimming. Specialists prefer their organelle-specific resources; all mobile cells seek nearby jelly when no specialist target is in range, using the same shared food cache. Jelly feeds every strain; dead cells become jelly. An ultra-rare strain, ??? (0.1%), has charcoal cytoplasm, a white membrane and blinking eyes. It slowly absorbs all particle materials, including other cells, to enlarge its one immortal body. It never reproduces. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
+    <div><strong>Player</strong> Select Player and click to place one. WASD: A/D walk · W jump/swim · S dive/fast-fall. Fire, lava, Meltdown, acid and explosions kill him; place another after death. <strong>Life</strong> falls in air and actively swims through liquids. A bright membrane surrounds darker cytoplasm, visible even when buried. Ice freezes life; heat thaws it. All strains paddle with their membrane, pushing contacting matter backward; the swimming gene gives a stronger stroke. Violet chemophiles digest oil, powder and nitro for extra fuel. Undigested nitro can still explode inside a cell. White predator horns drive into rival membranes, puncturing them into edible jelly. Fire and lava contact kill non-thermophiles, turning exposed cytoplasm into jelly. Orange thermophiles seek heat, turn it into food and shed surplus surface jelly. Lime radiophiles seek Meltdown with 98% lower contact mutation risk. Cyan roller organelles drive a rotating membrane that grips land. Rare traits: ivory rigid shells with flexible flagella (6%), jellyfish bells and trailing tendrils (5%), acid-spraying glands with acid immunity (4%), and rooted moss plants that make jelly and burst into seeds (5%). All nine organelles combine freely; plantlike suppresses swimming. Specialists prefer their organelle-specific resources; all mobile cells seek nearby jelly when no specialist target is in range, using the same shared food cache. Jelly feeds every strain; dead cells become jelly. Jelly touching Meltdown has a very small chance to become new life, even in an otherwise lifeless world. An ultra-rare strain, ??? (0.1%), has charcoal cytoplasm, a white membrane and blinking eyes. It slowly absorbs all particle materials, including other cells, to enlarge its one immortal body. It never reproduces. <strong>Power:</strong> place turbines beneath flowing matter, then drag wires between the marked terminals. Flywheels retain momentum after flow stops. P supplies power; M+ and M− accept power to drive clockwise or counterclockwise. Connected wires glow with their signal. NAND outputs ON unless both A and B are ON; its logic signal is separate from the turbines’ generated energy.
     <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div></div>
   </div>
   <div id="status">
@@ -195,6 +195,7 @@ const T_DEAD = 0, T_WATER = 1, T_OIL = 2, T_GRAVEL = 3, T_FIRE = 4, T_NITRO = 5,
 const MELTDOWN_BLAST = 10000.0, MELTDOWN_PRESSURE = 0.35, MELTDOWN_CHANCE = 0.02;
 const MELTDOWN_REACH = 0.95, MELTDOWN_THERMAL = 24.0;
 const MELTDOWN_HEAT = 5.0, MELTDOWN_MELT = 0.045, MELTDOWN_MUTATE = 0.045;
+const MELTDOWN_LIFE_CHANCE = 0.00001; // One rare roll per contacting jelly particle, independent of neighbor count.
 const A_FROZEN = 1 << 5; // an unused state bit; genome and vitality remain intact
 // ---- life ----------------------------------------------------------------
 // A life particle spends its attribute word differently from dead matter: the byte that is a
@@ -275,13 +276,16 @@ function bioHash(a, b) {
     const w = Math.imul((k >>> ((k >>> 28) + 4)) ^ k, 277803737) >>> 0; return ((w >>> 22) ^ w) >>> 0; };
   return (pcg((a ^ pcg(b)) >>> 0) & 0xFFFFFF) / 16777216;
 }
+// Share the same independent trait probabilities with spontaneous life in the GPU shader.
+const GENOME_TRAITS = [[0x0100,.70],[0x0400,.30],[0x4000,.25],[0x0020,.25],[0x0040,.20],[0x0080,.30],[2,.06],[4,.05],[8,.04],[16,.05]];
 // About 70% of new strains inherit the stronger membrane stroke.
 function randomGenome(random = Math.random) {
   if (random() < UNKNOWN_CHANCE) return UNKNOWN_GENOME;
-  const g = Math.floor(random() * 65536) & 0xBA01;
-  const result = g | (random() < 0.70 ? 0x0100 : 0) | (random() < 0.30 ? 0x0400 : 0) | (random() < 0.25 ? 0x4000 : 0) | (random() < 0.25 ? 0x0020 : 0) | (random() < 0.20 ? 0x0040 : 0) | (random() < 0.30 ? 0x0080 : 0) | (random() < 0.06 ? 2 : 0) | (random() < 0.05 ? 4 : 0) | (random() < 0.04 ? 8 : 0) | (random() < 0.05 ? 16 : 0);
-  return result === UNKNOWN_GENOME ? result ^ 1 : result;
+  let g = Math.floor(random() * 65536) & 0xBA01;
+  for(const [bit,chance]of GENOME_TRAITS)if(random()<chance)g|=bit;
+  return g === UNKNOWN_GENOME ? g ^ 1 : g;
 }
+function originGenome(id, clock) { let stream=6101;return randomGenome(()=>bioHash(id+stream++,clock)); }
 // A strain has a fixed body-wave axis. The motor changes bond rest lengths, never adds thrust.
 const headingCache = new Map();
 function strainHeading(g) {
@@ -631,6 +635,8 @@ class Engine {
           let rx = px[j] - x, ry = py[j] - y; const d2 = rx * rx + ry * ry;
           if (d2 >= 1) continue;
           const aj = attr[j], tj = aj & TM;
+          // Reuse the radiation channel for a Boolean jelly/Meltdown contact, including overlap.
+          if(ti===T_JELLO && tj===T_MELTDOWN)radiation=1;
           // Thermophiles alone survive direct fire/lava contact, including exact overlap.
           if (li_ && !(organelles(ai) & O_THERMO) && (tj === T_FIRE || tj === T_LAVA)) fatalContact = true;
           if(li_ && tj===T_ACID && !(organelles(ai)&O_ACID))fatalContact=true;
@@ -954,6 +960,10 @@ class Engine {
     for (let i = 0; i < n; i++) {
       const a = attr[i], t = a & TM; out[i] = a;
       if (this.rho[i] < 0 || (t !== T_LIFE && t !== T_JELLO && t !== T_MUD && t !== T_CARGO && t !== T_OIL && t !== T_NITRO && t !== T_POWDER)) continue;
+      if(t===T_JELLO && this.lifeRad[i]>0 && bioHash((pid[i]&PID_MASK)+5987,this.tick)<MELTDOWN_LIFE_CHANCE){
+        out[i]=mkLife(originGenome(pid[i]&PID_MASK,this.tick),P.lifeStart)|A_FRESH;
+        bonds.fill(BOND_EMPTY,i*NB,i*NB+NB);continue; // New life wins over this step's jelly melting.
+      }
       if (isUnknown(a)) { out[i] = mkLife(UNKNOWN_GENOME,250) | (a & A_FRESH); continue; }
       if (nitroIgnites(a, this.react[i])) continue; // ignition wins over intake/digestion, including the last unit
       let value = vitOf(a), result = a, consumed = false;
@@ -1455,6 +1465,7 @@ const MELTDOWN_CHANCE = ${MELTDOWN_CHANCE};
 const MELTDOWN_HEAT = ${MELTDOWN_HEAT};
 const MELTDOWN_MELT = ${MELTDOWN_MELT};
 const MELTDOWN_MUTATE = ${MELTDOWN_MUTATE};
+const MELTDOWN_LIFE_CHANCE = ${MELTDOWN_LIFE_CHANCE};
 fn isGel(t: u32) -> bool { return t == 6u || t == 18u; }
 struct Params {
   gw: u32, gh: u32, nc: u32, nUpper: u32,
@@ -1517,6 +1528,12 @@ fn geneB(a: u32) -> u32 { return (a >> 24u) & 0xBBu; }
 fn genome(a: u32) -> u32 { return ((a >> 8u) & 255u) | (((a >> 24u) & 255u) << 8u); }
 fn vitOf(a: u32) -> u32 { return (a >> 16u) & 255u; }
 fn mkLife(g: u32, v: u32) -> u32 { return 16u | ((g & 255u) << 8u) | (min(v, 250u) << 16u) | (((g >> 8u) & 255u) << 24u); }
+fn originGenome(id:u32,clock:u32)->u32 {
+  if(rnd(id+6101u,clock)<${UNKNOWN_CHANCE}){return UNKNOWN_GENOME;}
+  var g=u32(rnd(id+6102u,clock)*65536.0)&0xBA01u;
+  ${GENOME_TRAITS.map(([bit,chance],k)=>`g |= select(0u, ${bit}u, rnd(id+${6103+k}u,clock)<${chance});`).join('\n  ')}
+  return select(g,g^1u,g==UNKNOWN_GENOME);
+}
 fn divThresh(a: u32) -> f32 { return select(P.lifeDiv, P.lifeDiv * 0.78, (geneB(a) & B_FECUND) != 0u); }
 fn membraneStrength(a: u32) -> f32 {
   if(isUnknown(a)){return 24.0;}
@@ -2109,6 +2126,7 @@ ${SPAN}
       let rv = sj.xy - x; let d2 = dot(rv, rv);
       if (d2 >= 1.0) { continue; }
       let aj = att[j]; let tj = aj & TM; let jg = j;
+      if(ti==6u && tj==18u){radiation=1.0;}
       if (li_ && (organelles(att[i]) & O_THERMO) == 0u && (tj == 4u || tj == 7u)) { fatalContact = true; }
       if(li_ && tj==19u && (organelles(att[i])&O_ACID)==0u){fatalContact=true;}
       if (d2 < 1e-12) { continue; }
@@ -2417,6 +2435,7 @@ var<workgroup> ltot: u32;
       let rv = sj.xy - x; let d2 = dot(rv, rv);
       if (d2 >= 1.0) { continue; }
         let aj = AJ; let tj = aj & TM; let jg = select(j, rowA[rr] + j - rowBase[rr], ok);
+      if(ti==6u && tj==18u){radiation=1.0;}
       if (li_ && (organelles(att[i]) & O_THERMO) == 0u && (tj == 4u || tj == 7u)) { fatalContact = true; }
       if(li_ && tj==19u && (organelles(att[i])&O_ACID)==0u){fatalContact=true;}
       if (d2 < 1e-12) { continue; }
@@ -2707,6 +2726,10 @@ ${CARGO_LINK}
   if(isUnknown(a)){out[i]=mkLife(UNKNOWN_GENOME,250u)|(a&A_FRESH);return;}
   if (nitroIgnites(a, dens[i].w)) { return; } // ignition wins over intake/digestion, including the last unit
   let z = bitcast<u32>(X[i].z); let message = select(bitcast<u32>(X[i].w), idx[bioSlot(i)], t == 9u); let partner = message & ID_MASK;
+  if(t==6u && ((z>>24u)&63u)>0u && rnd((pid[i]&ID_MASK)+5987u,P.frame)<MELTDOWN_LIFE_CHANCE){
+    out[i]=mkLife(originGenome(pid[i]&ID_MASK,P.frame),u32(P.lifeStart))|A_FRESH;
+    for(var k=0u;k<NB;k++){bonds[i*NB+k]=BOND_EMPTY;}return;
+  }
   var value = f32(vitOf(a)); var result = a; var consumed = false;
   if (t == 16u && (message & 0x200000u) != 0u) { out[i] = (a & 0xFF00u) | 6u; return; }
   if (t == 16u && (a & A_FROZEN) != 0u) {
