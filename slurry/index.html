@@ -109,9 +109,6 @@
             font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
   #status .name { font-family: var(--px); font-size: 11px; color: var(--label); letter-spacing: .1em; }
   #status .v { color: var(--label); }
-  #life-guide { flex-wrap: wrap; padding: 9px 10px; border-top: 1px solid var(--rule); display: flex; align-items: center; gap: 12px; line-height: 1.6; }
-  #life-guide > div { flex: 1 1 300px; min-width: 0; }
-  #strain-info { color: var(--dim); }
   #status .keys { margin-left: auto; }
   #status kbd { font-family: var(--mono); color: var(--label); border: 1px solid var(--rule-hi); padding: 0 4px; font-size: 10px; }
   @media (max-width: 760px) {
@@ -168,9 +165,6 @@
       <button class="cell opt" id="o-demo">Demo</button>
       <button class="cell opt" id="o-walls">Edge <em>On</em></button>
     </div>
-  </div>
-  <div id="life-guide">
-    <div id="strain-info">Inside: stabilizing cytoplasm · Each life stroke has a new genome.</div>
   </div>
   <div id="status">
     <span class="name">Slurry</span>
@@ -4627,14 +4621,7 @@ const ptr = { x: -99, y: -99, lx: 0, ly: 0, down: false, btn: 'L', inside: false
 // Each stroke of the life brush lays down one organism.  Press again and you get a new genome,
 // so two dabs are distinct strains with independently expressed membrane receptors.
 let strain = randomGenome();
-function newStrain() {
-  strain = randomGenome();
-  const a = mkLife(strain, PRM.lifeStart), gb = geneB(a);
-  if(isUnknown(a)){$('strain-info').textContent='??? · Ultra rare · Eats all matter · Immortal · Growth only · Watching';return;}
-  $('strain-info').textContent = 'Strain ' + strain.toString(16).padStart(4, '0').toUpperCase() +
-    ' · Membrane ' + membraneStrength(a).toFixed(2) + '× · Jelly ' + (lifeGate(a, T_JELLO) ? 'accepted' : 'rejected') +
-    ' · ' + (organelles(a)&O_PLANT?'Rooted / no swimming':gb & B_MOTILE ? 'Strong swimming membrane' : 'Swimming membrane') + ' · Organelles: ' + ([organelles(a) & O_CHEM ? 'Chemophile' : '', organelles(a) & O_PRED ? 'Predator' : '', organelles(a) & O_THERMO ? 'Thermophile' : '', organelles(a) & O_RADIO ? 'Radiophile' : '', organelles(a) & O_ROLL ? 'Roller' : '', organelles(a)&O_RIGID?'Rigid body':'', organelles(a)&O_JELLY?'Jellyfish':'', organelles(a)&O_ACID?'Acid defense':'', organelles(a)&O_PLANT?'Plantlike':''].filter(Boolean).join(' + ') || 'none');
-}
+function newStrain() { strain = randomGenome(); }
 
 function rnd(a, b) { return a + Math.random() * (b - a); }
 function spawnParticle(x, y, t, vx, vy, gene) {
