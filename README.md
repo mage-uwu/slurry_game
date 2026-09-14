@@ -1,6 +1,6 @@
 # Monomage / Slurry
 
-A single-file particle physics sandbox with fluids, solids, fire, evolving cells, Meltdown, turbines, motors, wires and NAND gates.
+A single-file particle physics sandbox with fluids, solids, fire, evolving cells, Meltdown, turbines, motors, wires, lights and NAND gates.
 
 ## Run locally
 
@@ -15,6 +15,10 @@ Open **http://localhost:8000** for the Monomage landing page, or **http://localh
 ## Play
 
 Choose materials and paint them into the world. Left/right clicking a material assigns it to that mouse button. Space pauses; `[` and `]` change brush size. The game opens to an empty world. Use **Demo** if you want a sample scene.
+
+**Light:** place a light, then wire a turbine's P terminal or a gate output to either side. Both terminals are connected internally, so wire the other side to the next light to make a chain. Lights do not create or retain electrical power. Their anchored body blocks particles even when off. Powered lights glow and heat material on contact: water boils, ice/snow/jelly melt, oil ignites, powder and nitro explode, and unprotected life dies into jelly. Thermophiles tolerate the heat; frozen cells thaw. Up to 64 lights share the existing machine contact map/pass, with constant-time lookup per particle.
+
+**Eraser:** select the Eraser control and drag to delete particles, walls, wires and objects. It works while running or paused, on CPU and WebGPU.
 
 Select **Player** in the element menu and click to place the white box-headed character. No player spawns automatically, and only one can exist at a time. Control him with **A/D** to walk, **W** to jump or swim upward, and **S** to dive or fast-fall. **Fire, lava, Meltdown, acid and explosions kill him.** After death, select Player and click to place another. The old W material shortcut is now **K**. Movement pauses with the simulation, and releasing keys or switching away clears held movement.
 
@@ -48,12 +52,14 @@ node tests/rare-organelles.test.cjs
 node tests/jelly-navigation.test.cjs
 node tests/unknown.test.cjs
 node tests/abiogenesis.test.cjs
+node tests/lights.test.cjs
 ```
 
 Optional native GPU regression checks, with Node.js, Python, NumPy and wgpu installed:
 
 ```sh
 python3 tests/unknown-gpu.test.py
+python3 tests/lights-gpu.test.py
 ```
 
 The GPU checks exercise partial workgroups, mixed ordinary/??? particles, positive and negative momentum at the full 128k particle capacity, and clearing the indirect body dispatch.

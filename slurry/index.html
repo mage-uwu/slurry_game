@@ -151,6 +151,7 @@
       <button class="cell" id="t-drag"   data-t="drag">Drag</button>
       <button class="cell" id="t-player" data-t="player" title="Place one WASD player. Fire, lava, Meltdown and explosions are fatal."><span class="sw"></span>Player</button>
       <button class="cell" id="t-turbine" data-t="turbine" title="Flywheel generator/motor. Retains spin. P supplies power; M+ and M− drive opposite directions.">✛ Turbine</button>
+      <button class="cell" id="t-light" data-t="light" title="Wire power to either terminal. Chain lights together. Powered lights heat material touching them.">☼ Light</button>
       <button class="cell" id="t-wire" data-t="wire" title="Drag between terminals. Touching wires connect.">⌁ Wire</button>
       <button class="cell" id="t-gate" data-t="gate" title="NAND: two inputs on the left, one output on the right.">⊼ NAND</button>
     </div>
@@ -159,7 +160,7 @@
       <button class="cell opt" id="o-grav">Grav <em>&darr;</em></button>
       <button class="cell opt" id="o-speed">Speed <em>1x</em></button>
       <button class="cell opt" id="o-view">View <em>Blob</em></button>
-      <button class="cell opt" id="t-erase" data-t="erase" title="Select the eraser, then drag across the world to erase." aria-pressed="false">Erase</button>
+      <button class="cell opt" id="t-erase" data-t="erase" title="Select the eraser, then drag across the world to erase particles, walls and objects." aria-pressed="false">Eraser</button>
       <button class="cell opt" id="o-clear" title="Clear the entire world">Clear</button>
       <button class="cell opt" id="o-run">Stop</button>
       <button class="cell opt" id="o-demo">Demo</button>
@@ -1215,31 +1216,45 @@ class Engine {
 }
 
 // ---------- anchored machines and clocked circuits ----------
+const LIGHT_MAX = 64, LIGHT_RADIUS = 1.8, LIGHT_HEAT_RADIUS = 2.15;
 const ROTOR_MAX = 64, ROTOR_RADIUS = 4, ROTOR_INERTIA = 120, ROTOR_SCALE = 1048576, ROTOR_WORDS = 12, ROTOR_BYTES = 48;
+function lightHeat(a,P,roll){
+  const t=a&TM,shade=a&0xFF00;let blast=0;
+  if(isUnknown(a))return {attr:a,blast};
+  if(nitroIgnites(a,1)){const fraction=t===T_CARGO?cargoFraction(a):1;const age=Math.min(4095,Math.round(-P.boomT*Math.log(fraction)));a=shade|T_FIRE|A_BOOM|(age<<16);blast=fraction;}
+  else if(t===T_POWDER&&roll<P.powderP){a=shade|T_FIRE|A_BOOM|A_OILF;blast=.65;}
+  else if(t===T_OIL&&!(a&A_LIT)&&roll<P.igniteP)a=shade|T_OIL|A_LIT;
+  else if(t===T_WATER&&roll<P.steamP)a=shade|T_STEAM;
+  else if(t===T_ICE&&roll<P.meltIce||t===T_SNOW&&roll<P.meltSnow||t===T_JELLO&&roll<P.meltP)a=shade|T_WATER;
+  else if(t===T_MUD&&roll<P.dryP)a=shade|T_DIRT;
+  else if(t===T_LIFE){if(a&A_FROZEN){if(roll<P.meltIce)a=(a&~A_FROZEN)|A_FRESH;}else if(!(organelles(a)&O_THERMO))a=deadJelly(a);else a=withVit(a,Math.min(250,vitOf(a)+1));}
+  return {attr:a,blast};
+}
 class MachineSystem {
   constructor(w,h) {
-    this.w=w;this.h=h;this.rotors=Array(ROTOR_MAX).fill(null);this.gates=[];
+    this.w=w;this.h=h;this.rotors=Array(ROTOR_MAX).fill(null);this.lights=Array(LIGHT_MAX).fill(null);this.gates=[];
     this.map=new Uint32Array(w*h);this.wire=new Uint8Array(w*h);this.net=new Int32Array(w*h);this.net.fill(-1);
     this.signals=new Float32Array(0);this.nextSignals=new Float32Array(0);this.rev=0;this.mapDirty=true;this.wireDirty=true;this.dirtySlots=new Set();this.clock=0;
   }
-  clear(){this.rotors.fill(null);this.gates=[];this.map.fill(0);this.wire.fill(0);this.net.fill(-1);this.signals=new Float32Array(0);this.nextSignals=new Float32Array(0);this.rev++;this.mapDirty=true;this.wireDirty=true;this.clock=0;for(let i=0;i<ROTOR_MAX;i++)this.dirtySlots.add(i);}
-  rebuildMap(){this.map.fill(0);for(let i=0;i<ROTOR_MAX;i++){const r=this.rotors[i];if(!r)continue;for(let y=Math.max(0,r.y-5);y<=Math.min(this.h-1,r.y+5);y++)for(let x=Math.max(0,r.x-5);x<=Math.min(this.w-1,r.x+5);x++)this.map[y*this.w+x]=i+1;}this.mapDirty=true;}
+  clear(){this.rotors.fill(null);this.lights.fill(null);this.gates=[];this.map.fill(0);this.wire.fill(0);this.net.fill(-1);this.signals=new Float32Array(0);this.nextSignals=new Float32Array(0);this.rev++;this.mapDirty=true;this.wireDirty=true;this.clock=0;for(let i=0;i<ROTOR_MAX;i++)this.dirtySlots.add(i);}
+  rebuildMap(){this.map.fill(0);for(let i=0;i<ROTOR_MAX;i++){const r=this.rotors[i];if(!r)continue;for(let y=Math.max(0,r.y-5);y<=Math.min(this.h-1,r.y+5);y++)for(let x=Math.max(0,r.x-5);x<=Math.min(this.w-1,r.x+5);x++)this.map[y*this.w+x]=i+1;}for(let i=0;i<LIGHT_MAX;i++){const l=this.lights[i];if(!l)continue;for(let y=l.y-3;y<=l.y+3;y++)for(let x=l.x-3;x<=l.x+3;x++)this.map[y*this.w+x]=ROTOR_MAX+i+1;}this.mapDirty=true;}
   place(kind,x,y){
     x=Math.round(x);y=Math.round(y);const radius=kind==='turbine'?5:3;
     if(x<radius+1||y<radius+1||x>=this.w-radius-1||y>=this.h-radius-1)return false;
-    if(this.rotors.some(r=>r&&Math.hypot(r.x-x,r.y-y)<radius+6)||this.gates.some(g=>Math.hypot(g.x-x,g.y-y)<radius+4))return false;
+    if(this.rotors.some(r=>r&&Math.hypot(r.x-x,r.y-y)<radius+6)||this.gates.some(g=>Math.hypot(g.x-x,g.y-y)<radius+4)||this.lights.some(l=>l&&Math.hypot(l.x-x,l.y-y)<radius+4))return false;
     if(kind==='turbine'){const i=this.rotors.findIndex(r=>!r);if(i<0)return false;this.rotors[i]={x,y,angle:0,omega:0,torque:0,power:0,energy:0,drive:0};this.dirtySlots.add(i);this.rebuildMap();}
+    else if(kind==='light'){const i=this.lights.findIndex(l=>!l);if(i<0)return false;this.lights[i]={x,y,on:false};this.rebuildMap();}
     else {if(this.gates.length>=64)return false;this.gates.push({x,y,a:false,b:false,out:false});}
     this.rev++;this.wireDirty=true;return true;
   }
-  ports(){const p=[];for(const r of this.rotors)if(r)p.push([r.x+5,r.y],[r.x-5,r.y-1],[r.x-5,r.y+1]);for(const g of this.gates)p.push([g.x-3,g.y-1],[g.x-3,g.y+1],[g.x+3,g.y]);return p;}
+  ports(){const p=[];for(const l of this.lights)if(l)p.push([l.x-3,l.y],[l.x+3,l.y]);for(const r of this.rotors)if(r)p.push([r.x+5,r.y],[r.x-5,r.y-1],[r.x-5,r.y+1]);for(const g of this.gates)p.push([g.x-3,g.y-1],[g.x-3,g.y+1],[g.x+3,g.y]);return p;}
   snap(x,y){let best=1.6,p=[Math.round(x),Math.round(y)];for(const q of this.ports()){const d=Math.hypot(x-q[0],y-q[1]);if(d<best){best=d;p=q;}}return p;}
   wireLine(x0,y0,x1,y1,value=1){
     [x0,y0]=this.snap(x0,y0);[x1,y1]=this.snap(x1,y1);const n=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)*2));let last=null;
     const put=(x,y)=>{if(x<0||y<0||x>=this.w||y>=this.h)return;const k=y*this.w+x;if(this.wire[k]!==value){this.wire[k]=value;this.wireDirty=true;}};
     for(let i=0;i<=n;i++){const x=Math.round(x0+(x1-x0)*i/n),y=Math.round(y0+(y1-y0)*i/n);if(last&&x!==last[0]&&y!==last[1])put(x,last[1]);put(x,y);last=[x,y];}
   }
-  erase(x,y,r){let changed=false;for(let i=0;i<ROTOR_MAX;i++){const t=this.rotors[i];if(t&&Math.hypot(t.x-x,t.y-y)<r+4){this.rotors[i]=null;this.dirtySlots.add(i);changed=true;}}const n=this.gates.length;this.gates=this.gates.filter(g=>Math.hypot(g.x-x,g.y-y)>r+2);changed ||= n!==this.gates.length;
+  erase(x,y,r){let changed=false;for(let i=0;i<LIGHT_MAX;i++){const l=this.lights[i];if(l&&Math.hypot(l.x-x,l.y-y)<r+LIGHT_RADIUS){this.lights[i]=null;changed=true;}}for(let i=0;i<ROTOR_MAX;i++){const t=this.rotors[i];if(t&&Math.hypot(t.x-x,t.y-y)<r+4){this.rotors[i]=null;this.dirtySlots.add(i);changed=true;}}const n=this.gates.length;this.gates=this.gates.filter(g=>Math.hypot(g.x-x,g.y-y)>r+2);changed ||= n!==this.gates.length;
     for(let yy=Math.max(0,Math.floor(y-r));yy<=Math.min(this.h-1,Math.ceil(y+r));yy++)for(let xx=Math.max(0,Math.floor(x-r));xx<=Math.min(this.w-1,Math.ceil(x+r));xx++)if(Math.hypot(xx-x,yy-y)<=r&&this.wire[yy*this.w+xx]){this.wire[yy*this.w+xx]=0;this.wireDirty=true;}
     if(changed){this.rev++;this.rebuildMap();this.wireDirty=true;}
   }
@@ -1247,6 +1262,8 @@ class MachineSystem {
     this.net.fill(-1);const q=new Int32Array(this.w*this.h);let count=0;
     // Terminals are nodes even before a wire is drawn.
     const occupied=this.wire.slice();for(const [x,y]of this.ports())occupied[y*this.w+x]=1;
+    // Lamps pass current without becoming sources or latching power on.
+    for(const l of this.lights)if(l)for(let x=l.x-3;x<=l.x+3;x++)occupied[l.y*this.w+x]=1;
     for(let k=0;k<occupied.length;k++){if(!occupied[k]||this.net[k]>=0)continue;let head=0,tail=1;q[0]=k;this.net[k]=count;
       while(head<tail){const a=q[head++],x=a%this.w;for(const b of [x>0?a-1:-1,x<this.w-1?a+1:-1,a-this.w,a+this.w])if(b>=0&&b<occupied.length&&occupied[b]&&this.net[b]<0){this.net[b]=count;q[tail++]=b;}}count++;
     }this.signals=new Float32Array(count);this.nextSignals=new Float32Array(count);this.wireDirty=false;
@@ -1257,13 +1274,15 @@ class MachineSystem {
     // Snapshot inputs give feedback circuits a finite propagation delay; no recursive evaluation.
     for(const g of this.gates){g.a=this.signal(g.x-3,g.y-1)>=.12;g.b=this.signal(g.x-3,g.y+1)>=.12;g.out=!(g.a&&g.b);drive(g.x+3,g.y,g.out?1:0);}
     this.nextSignals=this.signals;this.signals=out;
+    for(const l of this.lights)if(l)l.on=this.signal(l.x-3,l.y)>=.12;
     for(const r of this.rotors)if(r)r.drive=this.signal(r.x-5,r.y-1)-this.signal(r.x-5,r.y+1);
   }
   advance(steps){if(this.wireDirty)this.rebuildWires();this.clock+=steps;while(this.clock>=8){this.clock-=8;this.logicStep();}}
   collide(e){
-    if(!this.rotors.some(Boolean))return;
-    for(let i=0;i<e.n;i++){const a=e.attr[i],t=a&31;if(!t||t===14||((t===16||t===17)&&(a&32)))continue;
-      let x=e.qx[i],y=e.qy[i];const cell=Math.floor(y)*this.w+Math.floor(x);if(x<0||y<0||x>=this.w||y>=this.h)continue;const r=this.rotors[this.map[cell]-1];if(!r)continue;
+    if(!this.rotors.some(Boolean)&&!this.lights.some(Boolean))return;
+    for(let i=0;i<e.n;i++){const a=e.attr[i],t=a&31;if(!t)continue;
+      let x=e.qx[i],y=e.qy[i];const cell=Math.floor(y)*this.w+Math.floor(x);if(x<0||y<0||x>=this.w||y>=this.h)continue;const id=this.map[cell];if(id>ROTOR_MAX){const l=this.lights[id-ROTOR_MAX-1];if(l)this.lightContact(e,i,l);continue;}
+      if(t===14||((t===16||t===17)&&(a&32)))continue;const r=this.rotors[id-1];if(!r)continue;
       const co=Math.cos(r.angle),si=Math.sin(r.angle),rx=x-r.x,ry=y-r.y,lx=co*rx+si*ry,ly=-si*rx+co*ry,w=.58;
       const h=Math.abs(lx)<4.18&&Math.abs(ly)<w,v=Math.abs(ly)<4.18&&Math.abs(lx)<w;if(!h&&!v)continue;
       let nx=0,ny=0,depth=0;
@@ -1277,6 +1296,21 @@ class MachineSystem {
       const speed=Math.hypot(vx,vy);if(speed>e.P.maxStep){vx*=e.P.maxStep/speed;vy*=e.P.maxStep/speed;}
       e.qx[i]=x;e.qy[i]=y;e.px[i]=x+vx;e.py[i]=y+vy;
     }
+  }
+  lightContact(e,i,l){
+    let a=e.attr[i],x=e.qx[i],y=e.qy[i],dx=x-l.x,dy=y-l.y,d=Math.hypot(dx,dy);
+    if(d>LIGHT_HEAT_RADIUS)return;
+    if(l.on){
+      const result=lightHeat(a,e.P,Math.random());
+      if(result.blast && Math.random()<e.P.blastP*result.blast && e.blastOut.length<128)e.blastOut.push(x,y);
+      a=result.attr|A_FRESH;e.attr[i]=a;
+    }
+    if(d>=LIGHT_RADIUS||(a&TM)===T_ICE||((a&TM)===T_LIFE||(a&TM)===T_CARGO)&&(a&A_FROZEN))return;
+    const nx=d>1e-6?dx/d:0,ny=d>1e-6?dy/d:-1;
+    let vx=e.px[i]-x,vy=e.py[i]-y;const inward=Math.min(0,vx*nx+vy*ny);vx-=inward*nx;vy-=inward*ny;
+    const shift=Math.min(LIGHT_RADIUS-d+.001,.42),cx=x+nx*shift,cy=y+ny*shift;
+    if(!e.isWall(cx,cy)){x=cx;y=cy;}
+    e.qx[i]=x;e.qy[i]=y;e.px[i]=x+vx;e.py[i]=y+vy;e.attr[i]=a|A_FRESH;
   }
   integrate(){for(const r of this.rotors)if(r){
     const drive=Math.max(-1,Math.min(1,r.drive||0));
@@ -3832,15 +3866,43 @@ struct Rotor { center: vec2f, angle: f32, omega: f32, torque: atomic<i32>, prese
 `;
 const SH_MACHINES = HDR + ROTOR_HDR + /* wgsl */`
 @group(0) @binding(1) var<storage, read_write> st: array<vec4f>;
-@group(0) @binding(2) var<storage, read> att: array<u32>;
+@group(0) @binding(2) var<storage, read_write> att: array<u32>;
 @group(0) @binding(3) var<storage, read_write> rotors: array<Rotor>;
 @group(0) @binding(4) var<storage, read> grid: array<u32>;
 @group(0) @binding(5) var<storage, read> walls: array<u32>;
+@group(0) @binding(6) var<storage, read> lights: array<vec4f>;
+struct LightBlast { n:atomic<u32>, pad:u32, pos:array<vec2f,64> };
+@group(0) @binding(7) var<storage,read_write> blasts:LightBlast;
+fn lampHeat(a0:u32,i:u32,p:vec2f)->u32{
+ var a=a0;let t=a&TM;let shade=a&0xFF00u;var blast=0.0;
+ if(isUnknown(a)){return a;}
+ let seed=bitcast<u32>(p.x)^bitcast<u32>(p.y)^(i*1664525u);let roll=rnd(seed,P.frame+7817u);
+ if(nitroIgnites(a,1.0)){let fraction=select(1.0,f32(vitOf(a))/255.0,t==17u);let age=u32(min(4095.0,floor(-P.boomT*log(fraction)+0.5)));a=shade|4u|A_BOOM|(age<<16u);blast=fraction;}
+ else if(t==9u&&roll<P.powderP){a=shade|4u|A_BOOM|A_OILF;blast=0.65;}
+ else if(t==2u&&(a&A_LIT)==0u&&roll<P.igniteP){a=shade|2u|A_LIT;}
+ else if(t==1u&&roll<P.steamP){a=shade|15u;}
+ else if((t==14u&&roll<P.meltIce)||(t==13u&&roll<P.meltSnow)||(t==6u&&roll<P.meltP)){a=shade|1u;}
+ else if(t==12u&&roll<P.dryP){a=shade|11u;}
+ else if(t==16u){if((a&A_FROZEN)!=0u){if(roll<P.meltIce){a=(a&~A_FROZEN)|A_FRESH;}}else if((organelles(a)&O_THERMO)==0u){a=(a&0xFF00u)|6u;}else{a=(a&~(255u<<16u))|(min(250u,vitOf(a)+1u)<<16u);}}
+ if(blast>0.0&&rnd(seed^0xA511E9B3u,P.frame)<P.blastP*blast){let k=atomicAdd(&blasts.n,1u);if(k<64u){blasts.pos[k]=p;}}
+ return a;
+}
+fn lampContact(i:u32,l:vec4f){
+ if(l.w<0.5){return;}let s=st[i];var p=s.zw;let delta=p-l.xy;let dist=length(delta);if(dist>2.15){return;}
+ var a=att[i];if(l.z>0.5){a=lampHeat(a,i,p)|A_FRESH;att[i]=a;}
+ let t=a&TM;if(dist>=1.8||t==14u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}
+ var n=vec2f(0.0,-1.0);if(dist>1e-6){n=delta/dist;}
+ var velocity=s.xy-p;velocity-=min(0.0,dot(velocity,n))*n;
+ let corrected=p+n*min(1.8-dist+0.001,0.42);let wc=vec2i(floor(corrected*2.0));
+ if(all(wc>=vec2i(0))&&wc.x<i32(P.ww)&&wc.y<i32(P.wh)){if(walls[u32(wc.y)*P.ww+u32(wc.x)]==0u){p=corrected;}}
+ st[i]=vec4f(p+velocity,p);att[i]=a|A_FRESH;
+}
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
  let i=gid.x;if(i>=P.nUpper){return;}let a=att[i];let t=a&TM;
- if(t==0u||t==14u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}
+ if(t==0u){return;}
  let s=st[i];var p=s.zw;if(any(p<vec2f(0.0))||p.x>=f32(P.gw)||p.y>=f32(P.gh)){return;}
- let id=grid[u32(p.y)*P.gw+u32(p.x)];if(id==0u){return;}let k=id-1u;if(rotors[k].present==0u){return;}
+ let id=grid[u32(p.y)*P.gw+u32(p.x)];if(id==0u){return;}if(id>64u){lampContact(i,lights[id-65u]);return;}
+ if(t==14u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}let k=id-1u;if(rotors[k].present==0u){return;}
  let r=p-rotors[k].center;let co=cos(rotors[k].angle);let si=sin(rotors[k].angle);
  let local=vec2f(co*r.x+si*r.y,-si*r.x+co*r.y);let w=0.58;
  let h=abs(local.x)<4.18&&abs(local.y)<w;let v=abs(local.y)<4.18&&abs(local.x)<w;if(!h&&!v){return;}
@@ -3858,6 +3920,16 @@ const SH_MACHINES = HDR + ROTOR_HDR + /* wgsl */`
   if(walls[u32(wc.y)*P.ww+u32(wc.x)]==0u){p=corrected;}
  }
  velocity*=min(1.0,P.maxStep/max(length(velocity),1e-9));st[i]=vec4f(p+velocity,p);
+}`;
+// Editing remains available while physics is paused.
+const SH_ERASER = HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read> st:array<vec4f>;
+@group(0) @binding(2) var<storage,read_write> att:array<u32>;
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ let i=gid.x;if(i>=P.nUpper){return;}
+ let b=P.toolVel*P.toolLen;let start=P.toolPos-b;let delta=st[i].zw-start;
+ let u=clamp(dot(delta,b)/max(dot(b,b),1e-9),0.0,1.0);
+ if(length(delta-b*u)<P.toolR){att[i]=0u;}
 }`;
 const SH_ROTORS = ROTOR_HDR + /* wgsl */`
 @group(0) @binding(0) var<storage, read_write> rotors: array<Rotor>;
@@ -3883,7 +3955,7 @@ const PEN_R = [0.7, 1.3, 2.2, 3.4, 5, 7.2, 10];
 const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4];   // spawn fill target per h x h cell; cargo is only ingested
 const GRAV = [[0, 1, '↓'], [0, 0, '0'], [0, -1, '↑']];
 const SPEEDS = [[0.5, '½'], [1, '1x'], [2, '2x']];
-const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player'];
+const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player', 'light'];
 const TYPE_OF = { water: T_WATER, oil: T_OIL, gravel: T_GRAVEL, fire: T_FIRE, nitro: T_NITRO, jello: T_JELLO, lava: T_LAVA,
                   sand: T_SAND, powder: T_POWDER, merc: T_MERC, dirt: T_DIRT, mud: T_MUD, snow: T_SNOW, ice: T_ICE, steam: T_STEAM, life: T_LIFE, meltdown: T_MELTDOWN };
 const PRM = makeParams();
@@ -3975,6 +4047,7 @@ class GpuSim {
     this.wallBuf = B(WW * WH * 4, U.STORAGE | U.COPY_DST);
     this.playerBuf=B(64,U.STORAGE|U.COPY_DST|U.COPY_SRC);this.playerRev=-1;
     this.playerReads=Array.from({length:3},()=>({buf:B(64,U.MAP_READ|U.COPY_DST),busy:false}));
+    this.lightBuf=B(LIGHT_MAX*16,U.STORAGE|U.COPY_DST);
     this.rotorBuf=B(ROTOR_MAX*ROTOR_BYTES,U.STORAGE|U.COPY_DST|U.COPY_SRC);this.machineMap=B(NC*4,U.STORAGE|U.COPY_DST);
     this.rotorReads=Array.from({length:3},()=>({buf:B(ROTOR_MAX*ROTOR_BYTES,U.MAP_READ|U.COPY_DST),busy:false}));
     this.blast = [B(520, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(520, U.STORAGE | U.COPY_DST | U.COPY_SRC)]; this.bw = 0; this.flash = 0;
@@ -4003,7 +4076,7 @@ class GpuSim {
     this.pCues = cp(SH_CUES, 'food-cues'); this.pSense = cp(SH_SENSE, 'organelle-sense');
     this.pCount = cp(SH_COUNT, 'count'); this.pScan = cp(SH_SCAN, 'scan'); this.pScatter = cp(SH_SCATTER, 'scatter');
     this.pDens = cp(SH_DENSITY, 'density'); this.pRelax = cp(SH_RELAX, 'relax'); this.pContact = cp(SH_CONTACT, 'contact');
-    this.pMachines=cp(SH_MACHINES,'turbine contacts');this.pRotors=cp(SH_ROTORS,'rotor integration');
+    this.pEraser=cp(SH_ERASER,'paused eraser');this.pMachines=cp(SH_MACHINES,'machine contacts');this.pRotors=cp(SH_ROTORS,'rotor integration');
     this.pBio = cp(SH_BIO, 'biology'); this.pFric = cp(SH_FRICTION, 'friction'); this.pFinal = cp(SH_FINAL, 'finalize');
     this.pBondMove = cp(SH_BONDMOVE, 'bondmove'); this.pIdx = cp(SH_IDX, 'idx'); this.pBonds = cp(SH_BONDS, 'bonds');
     this.pWake = cp(SH_WAKE, 'wake');
@@ -4051,7 +4124,8 @@ class GpuSim {
       final: [0, 1].map(d => [0, 1].map(w => bg(this.pFinal, [u, st[O], at[I], X[d], this.wallBuf, this.starts, this.dens, this.blast[1 - w], this.blast[w]]))),
       player: bg(this.pPlayer,[u,this.playerBuf,st[O],at[I],this.starts,this.wallBuf,this.blast[0],this.blast[1]]),
       playerPush: bg(this.pPlayerPush,[u,st[O],at[I],this.playerBuf,this.wallBuf]),
-      machines: bg(this.pMachines,[u,st[O],at[I],this.rotorBuf,this.machineMap,this.wallBuf]),
+      eraser:bg(this.pEraser,[u,st[O],at[O]]),
+      machines: [0,1].map(w=>bg(this.pMachines,[u,st[O],at[I],this.rotorBuf,this.machineMap,this.wallBuf,this.lightBuf,this.blast[w]])),
       splat: bg(this.pSplat, [this.runi, st[p], at[p]]),
       pix: bg(this.pPix, [this.runi, st[p], at[p], this.pixId, this.pixCov]),
       dots: bg(this.pDots, [this.runi, st[p], at[p]]),
@@ -4129,7 +4203,8 @@ class GpuSim {
     for(const i of machines.dirtySlots){const a=new Float32Array(ROTOR_WORDS),u=new Uint32Array(a.buffer),r=machines.rotors[i];if(r){a[0]=r.x;a[1]=r.y;a[2]=r.angle;a[3]=r.omega;u[5]=1;a[6]=r.power;a[7]=r.energy;a[8]=r.drive||0;}q.writeBuffer(this.rotorBuf,i*ROTOR_BYTES,a);}
     // Upload electrical input only: never overwrite GPU momentum with delayed readback.
     for(let i=0;i<ROTOR_MAX;i++){const r=machines.rotors[i];if(r)q.writeBuffer(this.rotorBuf,i*ROTOR_BYTES+32,new Float32Array([r.drive||0,0,0,0]));}
-    machines.dirtySlots.clear();const hasRotors=machines.rotors.some(Boolean);
+    machines.dirtySlots.clear();const hasRotors=machines.rotors.some(Boolean),hasLights=machines.lights.some(Boolean);
+    if(hasLights){const lights=new Float32Array(LIGHT_MAX*4);for(let i=0;i<LIGHT_MAX;i++){const l=machines.lights[i];if(l)lights.set([l.x,l.y,+l.on,1],i*4);}q.writeBuffer(this.lightBuf,0,lights);}
     if (this.pendN) {
       const k = Math.min(this.pendN, this.maxP - this.nUpper);
       q.writeBuffer(this.st[this.cur], this.nUpper * 16, this.pendSt, 0, k * 4);
@@ -4215,10 +4290,12 @@ class GpuSim {
         pass.setPipeline(this.pRareLocal);pass.setBindGroup(0,g.rareLocal);pass.dispatchWorkgroups(wg);
         pass.setPipeline(this.pUnknownBody);pass.setBindGroup(0,g.unknownBody);pass.dispatchWorkgroupsIndirect(this.rareHeads,(UNKNOWN_STATS+5)*4);
         pass.setPipeline(this.pRareBody);pass.setBindGroup(0,g.rareBody);pass.dispatchWorkgroupsIndirect(this.rareHeads,65537*4);
-        if(hasRotors){pass.setPipeline(this.pMachines);pass.setBindGroup(0,g.machines);pass.dispatchWorkgroups(wg);pass.setPipeline(this.pRotors);pass.setBindGroup(0,this.bgRotors);pass.dispatchWorkgroups(1);}
+        if(hasRotors||hasLights){pass.setPipeline(this.pMachines);pass.setBindGroup(0,g.machines[1-this.bw]);pass.dispatchWorkgroups(wg);}
+        if(hasRotors){pass.setPipeline(this.pRotors);pass.setBindGroup(0,this.bgRotors);pass.dispatchWorkgroups(1);}
         if(player.active){pass.setPipeline(this.pPlayer);pass.setBindGroup(0,g.player);pass.dispatchWorkgroups(1);
         pass.setPipeline(this.pPlayerPush);pass.setBindGroup(0,g.playerPush);pass.dispatchWorkgroups(wg);}
       }
+      if(!physics&&tool&&tool.kind===1){pass.setPipeline(this.pEraser);pass.setBindGroup(0,g.eraser);pass.dispatchWorkgroups(wg);}
       pass.end();
       if (physics) enc.copyBufferToBuffer(this.at[p], 0, this.at[1 - p], 0, this.nUpper * 4);
       if (timeThis) { enc.resolveQuerySet(this.qset, 0, 2, this.qbuf, 0); const slot = this.qread.find(r => !r.busy); if (slot) { slot.busy = true; enc.copyBufferToBuffer(this.qbuf, 0, slot.buf, 0, 16); this.pendingQ = slot; } }
@@ -4354,6 +4431,10 @@ class CpuSim {
     const e = this.e; e.edge = edgeOn ? 1 : 0; wallsDirty = false;
     const t0 = performance.now();
     for (let s = 0; s < steps; s++) { e.step(tool); machines.collide(e);machines.integrate();player.step(e); if (performance.now() - t0 > 30) break; }
+    if(steps===0&&tool&&tool.kind===1){
+      const bx=tool.vx*tool.len,by=tool.vy*tool.len,ax=tool.x-bx,ay=tool.y-by;
+      for(let i=0;i<e.n;i++){const dx=e.qx[i]-ax,dy=e.qy[i]-ay,u=Math.max(0,Math.min(1,(dx*bx+dy*by)/Math.max(bx*bx+by*by,1e-9)));if(Math.hypot(dx-bx*u,dy-by*u)<tool.r)e.attr[i]=0;}
+    }
     e.sort();
     occ.base.set(e.cellCount.subarray(0, NC)); occ.recent.fill(0); occ.cur = []; occ.log = [];
     this.render(view);
@@ -4677,7 +4758,7 @@ function applyInput(steps) {
     if (t === T_FIRE) vy -= 0.04 * Math.sign(PRM.gy || 0);
     if(t===T_LIFE&&(strain&RARE_MASK)){if(fresh)stampRareLife(x1,y1,R,strain);}else for (let k = 1; k <= n; k++) stampBrush(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, R, t, vx, vy, strain);
   } else if(name==='player'){if(fresh){if(player.active)showMsg('Only one player at a time.');else if(player.place(x1,y1,wallAt))showMsg('WASD · A/D walk · W jump/swim · S dive.');else showMsg('Leave room for the player’s head and legs.');}}
-  else if(name==='turbine'||name==='gate'){if(fresh){if(!machines.place(name,x1,y1))showMsg('Leave space around machines. Limit: 64 turbines and 64 gates.');else showMsg(name==='turbine'?'Flywheel placed · Flow drives P. Wire power into M+ or M− to drive the blades.':'NAND placed · Wire A and B on the left; output on the right.');}}
+  else if(name==='turbine'||name==='gate'||name==='light'){if(fresh){if(!machines.place(name,x1,y1))showMsg('Leave space around machines. Limit: 64 of each machine.');else showMsg(name==='light'?'Light placed · Wire either terminal. Powered lights heat on contact.':name==='turbine'?'Flywheel placed · Flow drives P. Wire power into M+ or M− to drive the blades.':'NAND placed · Wire A and B on the left; output on the right.');}}
   else if(name==='wire'){machines.wireLine(x0,y0,x1,y1);}
   else if (name === 'block') { paintLine(x0, y0, x1, y1, R, 1); }
   else if (name === 'erase') {
@@ -4874,6 +4955,11 @@ function drawMachines(c,sx,sy){
     for(const sign of [-1,1]){const py=r.y+sign;c.strokeStyle='#b4a27d';c.lineWidth=.18;c.beginPath();c.moveTo(r.x-5,py);c.lineTo(r.x-1.2,py);c.stroke();port(r.x-5,py,machines.signal(r.x-5,py),sign<0?'M+':'M−');}
     c.font='bold 1px system-ui';c.textAlign='center';c.fillStyle='#cde8f1';c.fillText((Math.abs(r.drive||0)>.01?'MOTOR ':'')+Math.round(r.power*100)+'% · '+r.energy.toFixed(1)+' E',r.x,r.y+6);
   }
+  for(const l of machines.lights)if(l){
+    c.save();c.translate(l.x,l.y);if(l.on){const glow=c.createRadialGradient(0,0,.4,0,0,4);glow.addColorStop(0,'rgba(255,239,145,.55)');glow.addColorStop(1,'rgba(255,200,80,0)');c.fillStyle=glow;c.fillRect(-4,-4,8,8);}
+    c.strokeStyle=l.on?'#fff1a3':'#8b8f98';c.lineWidth=.24;c.beginPath();c.moveTo(-3,0);c.lineTo(3,0);c.stroke();c.fillStyle=l.on?'#fff6b2':'#242630';c.beginPath();c.arc(0,0,1.5,0,Math.PI*2);c.fill();c.stroke();c.strokeStyle=l.on?'#c8892b':'#777c8a';c.lineWidth=.18;c.beginPath();c.moveTo(-.7,.5);c.lineTo(-.35,-.35);c.lineTo(.35,.35);c.lineTo(.7,-.5);c.stroke();c.restore();
+    port(l.x-3,l.y,l.on?1:0,'');port(l.x+3,l.y,l.on?1:0,'');
+  }
   for(const g of machines.gates){c.fillStyle='#161c30';c.strokeStyle='#a2a7d9';c.lineWidth=.2;c.beginPath();c.rect(g.x-2,g.y-2,4,4);c.fill();c.stroke();
     c.strokeStyle='#c0c5df';c.beginPath();c.moveTo(g.x-3,g.y-1);c.lineTo(g.x-2,g.y-1);c.moveTo(g.x-3,g.y+1);c.lineTo(g.x-2,g.y+1);c.moveTo(g.x+2,g.y);c.lineTo(g.x+3,g.y);c.stroke();
     c.fillStyle='#ebecff';c.textAlign='center';c.font='bold 1px system-ui';c.fillText('NAND',g.x,g.y+.35);
@@ -4894,6 +4980,7 @@ function drawCursor() {
   c.beginPath();
   if(name==='player'){c.rect(x-.85*s,y-4.2*s,1.7*s,1.5*s);c.moveTo(x,y-2.7*s);c.lineTo(x,y-1.7*s);c.lineTo(x-.5*s,y);c.moveTo(x,y-1.7*s);c.lineTo(x+.5*s,y);}
   else if(name==='turbine'){c.moveTo(x-4*s,y);c.lineTo(x+4*s,y);c.moveTo(x,y-4*s);c.lineTo(x,y+4*s);}
+  else if(name==='light'){c.arc(x,y,1.5*s,0,Math.PI*2);c.moveTo(x-3*s,y);c.lineTo(x+3*s,y);}
   else if(name==='gate'){c.rect(x-2*s,y-2*s,4*s,4*s);}
   else if(name==='wire'){const q=machines.snap(ptr.x,ptr.y);c.arc(q[0]*s,q[1]*s,.4*s,0,Math.PI*2);}
   else if (name === 'wind') { c.setLineDash([s * 0.6, s * 0.6]); c.arc(x, y, (PEN_R[ui.pen] * 1.5 + 2) * s, 0, Math.PI * 2); }
