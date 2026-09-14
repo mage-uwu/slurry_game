@@ -1,0 +1,9 @@
+worker.js
+wrangler.jsonc
+README.md
+tests/
+node_modules/
+.wrangler/
+.git/
+package.json
+package-lock.json

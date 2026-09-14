@@ -10,7 +10,7 @@ No build step or package installation is required. From this directory, run:
 python3 -m http.server 8000
 ```
 
-Open **http://localhost:8000** for the Monomage landing page, or **http://localhost:8000/slurry/** to play. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve the repository root over HTTPS for WebGPU access. No build command is needed: `/index.html` is the landing page and `/slurry/index.html` is the complete game. On Cloudflare, keep the existing root output directory; `/slurry/` resolves to the game automatically.
+Open **http://localhost:8000** for the Monomage landing page, or **http://localhost:8000/slurry/** to play. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve the repository root over HTTPS for WebGPU access. No build command is needed: `/index.html` is the landing page and `/slurry/index.html` is the complete game. Cloudflare deploys `worker.js` with repository-root static assets using `wrangler.jsonc`; `/slurry/` resolves to the game automatically. The `.assetsignore` file excludes server code and tests from public assets.
 
 ## Play
 
@@ -39,7 +39,7 @@ Traits are sampled independently, so hybrids can inherit any of the 512 combinat
 
 All game code, shaders and interface styles are in `slurry/index.html`. The English homepage is at `/` (`index.html`), and the Japanese homepage is at `/ja/` (`ja/index.html`). The header language links work without JavaScript. Each page has its own language tag, translated description and image alt text, canonical URL, and reciprocal language links for search engines. Both play links open `/slurry/`.
 
-The landing page is a minimal static homepage: the Monomage Games header, a real gameplay screenshot in `assets/slurry.jpg`, and an invitation to play. It loads no game engine, scripts, fonts or third-party assets.
+The landing page is a minimal static homepage: the Monomage Games header, a real gameplay screenshot in `assets/slurry.jpg`, and an invitation to play. It loads no game engine, fonts or third-party assets. A small first-party script updates the visitor total in the bottom-right footer.
 
 ## Controller checks
 
@@ -63,3 +63,25 @@ python3 tests/lights-gpu.test.py
 ```
 
 The GPU checks exercise partial workgroups, mixed ordinary/??? particles, positive and negative momentum at the full 128k particle capacity, and clearing the indirect body dispatch.
+
+## Visitor counter
+
+Both homepages show the same persistent visitor total. Direct game arrivals count too. Counting starts with the counter deployment; historical traffic is not imported. Each browser receives a random anonymous ID stored locally and in a first-party cookie. Refreshing or changing language does not add another visitor. Different devices or clearing all site storage can count again; this is an approximate browser total, not a count of identified people. No IP addresses, fingerprints or third-party analytics are stored.
+
+`POST /api/visitors` records a browser once and returns the total; `GET` reads without incrementing. A SQLite Durable Object serializes atomic updates and retains them across deployments. Keep the existing `visitors-v1` migration and `monomage-total-v1` object name when updating the Worker. If the endpoint is unavailable, the footer displays an em dash and the site/game continues working.
+
+For the complete local site including the counter:
+
+```sh
+npx wrangler dev
+```
+
+A plain static HTTP server still runs the game and landing pages, but cannot provide the visitor total. Deploy with `npx wrangler deploy`; the existing Cloudflare Git build can use the same configuration. The SQLite Durable Object binding is provisioned by the included migration.
+
+Counter regression check (requires Node.js and Miniflare 4 installed):
+
+```sh
+node tests/visitors.test.cjs
+```
+
+This exercises repeat visits, concurrent increments, malformed requests, static fallback, and persistence across Worker restarts.
