@@ -58,7 +58,7 @@
   #deck { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-top: 1px solid var(--rule); }
   .grid { display: grid; gap: 0; }
   #tools { grid-template-columns: repeat(7, minmax(0, 1fr)); border-right: 1px solid var(--rule); }
-  #opts { grid-template-columns: repeat(4, minmax(64px, auto)); }
+  #opts { grid-template-columns: repeat(3, minmax(64px, auto)); }
   #stage { will-change: transform; }
   .cell { position: relative; appearance: none; border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
           background: transparent; color: var(--label); font-family: var(--px); font-size: 11px; line-height: 1;
@@ -119,7 +119,7 @@
   @media (max-width: 760px) {
     #deck { grid-template-columns: 1fr; }
     #tools { grid-template-columns: repeat(4, minmax(0, 1fr)); border-right: 0; }
-    #opts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #opts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     #status .keys { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .cell { transition: none; } }
@@ -152,7 +152,6 @@
       <button class="cell" id="t-block"  data-t="block"><span class="sw"></span>Block</button>
       <button class="cell" id="t-fire"   data-t="fire"><span class="sw"></span>Fire</button>
       <button class="cell" id="t-steam"  data-t="steam"><span class="sw"></span>Steam</button>
-      <button class="cell" id="t-erase"  data-t="erase">Erase</button>
       <button class="cell" id="t-wind"   data-t="wind">Wind</button>
       <button class="cell" id="t-drag"   data-t="drag">Drag</button>
       <button class="cell" id="t-player" data-t="player" title="Place one WASD player. Fire, lava, Meltdown and explosions are fatal."><span class="sw"></span>Player</button>
@@ -165,8 +164,9 @@
       <button class="cell opt" id="o-grav">Grav <em>&darr;</em></button>
       <button class="cell opt" id="o-speed">Speed <em>1x</em></button>
       <button class="cell opt" id="o-view">View <em>Blob</em></button>
+      <button class="cell opt" id="t-erase" data-t="erase" title="Select the eraser, then drag across the world to erase." aria-pressed="false">Erase</button>
+      <button class="cell opt" id="o-clear" title="Clear the entire world">Clear</button>
       <button class="cell opt" id="o-run">Stop</button>
-      <button class="cell opt" id="o-clear">Clear</button>
       <button class="cell opt" id="o-demo">Demo</button>
       <button class="cell opt" id="o-walls">Edge <em>On</em></button>
     </div>
@@ -4802,6 +4802,7 @@ function clearAll() { player.reset(); machines.clear(); epoch++; sim.clear(); oc
 // ---------- UI ----------
 function refreshUI() {
   for (const t of TOOLS) { const b = $('t-' + t); b.classList.toggle('l', ui.toolL === t); b.classList.toggle('r', ui.toolR === t); }
+  $('t-erase').setAttribute('aria-pressed', String(ui.toolL === 'erase'));
   $('pen-v').textContent = 'Pen ' + (ui.pen + 1);
   $('o-grav').innerHTML = 'Grav <em>' + GRAV[ui.grav][2] + '</em>';
   $('o-speed').innerHTML = 'Speed <em>' + SPEEDS[ui.speed][1] + '</em>';
