@@ -18,7 +18,7 @@ Choose materials and paint them into the world. Left/right clicking a material a
 
 **Light:** place a light, then wire a turbine's P terminal or a gate output to either side. Both terminals are connected internally, so wire the other side to the next light to make a chain. Lights do not create or retain electrical power. Their anchored body blocks particles even when off. Powered lights glow and heat material on contact: water boils, ice/snow/jelly melt, oil ignites, powder and nitro explode, and unprotected life dies into jelly. Thermophiles tolerate the heat; frozen cells thaw. Up to 64 lights share the existing machine contact map/pass, with constant-time lookup per particle.
 
-**Eraser:** select the Eraser control and drag to delete particles, walls, wires and objects. It works while running or paused, on CPU and WebGPU.
+**Eraser:** select Eraser in the element menu and drag to delete particles, walls, wires and objects. It works while running or paused, on CPU and WebGPU.
 
 Select **Player** in the element menu and click to place the white box-headed character. No player spawns automatically, and only one can exist at a time. Control him with **A/D** to walk, **W** to jump or swim upward, and **S** to dive or fast-fall. **Fire, lava, Meltdown, acid and explosions kill him.** After death, select Player and click to place another. The old W material shortcut is now **K**. Movement pauses with the simulation, and releasing keys or switching away clears held movement.
 
