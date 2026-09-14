@@ -33,7 +33,9 @@ Traits are sampled independently, so hybrids can inherit any of the 512 combinat
 
 **Spontaneous life:** jelly touching Meltdown has a very small chance (1 in 100,000 per birth roll) to become a new life particle, even with no existing cells in the world. The new genome uses the same independent trait probabilities as the Life brush. Each jelly particle gets one roll regardless of how many Meltdown particles touch it. The contact flag reuses the existing physics payload; a successful reaction converts the jelly in place before it melts, with no new particle allocation, neighbor search or simulation pass.
 
-All game code, shaders and interface styles are in `slurry/index.html`. The landing page in `index.html` is a minimal static homepage: the Monomage Games header, a real gameplay screenshot in `assets/slurry.jpg`, and an invitation to play. It loads no game engine, scripts, fonts or third-party assets.
+All game code, shaders and interface styles are in `slurry/index.html`. The English homepage is at `/` (`index.html`), and the Japanese homepage is at `/ja/` (`ja/index.html`). The header language links work without JavaScript. Each page has its own language tag, translated description and image alt text, canonical URL, and reciprocal language links for search engines. Both play links open `/slurry/`.
+
+The landing page is a minimal static homepage: the Monomage Games header, a real gameplay screenshot in `assets/slurry.jpg`, and an invitation to play. It loads no game engine, scripts, fonts or third-party assets.
 
 ## Controller checks
 
