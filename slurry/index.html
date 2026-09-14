@@ -111,6 +111,7 @@
   #status .name { font-family: var(--px); font-size: 11px; color: var(--label); letter-spacing: .1em; }
   #status .v { color: var(--label); }
   #status .keys { margin-left: auto; }
+  #visitor-footer { padding: 0 10px 8px; text-align: right; color: #fff; font: 11px/1.4 var(--mono); }
   #status kbd { font-family: var(--mono); color: var(--label); border: 1px solid var(--rule-hi); padding: 0 4px; font-size: 10px; }
   @media (max-width: 760px) {
     #deck { grid-template-columns: 1fr; }
@@ -174,6 +175,7 @@
     <span id="s-be">starting</span>
     <span class="keys"><kbd>L</kbd>/<kbd>R</kbd> click assigns &middot; <kbd>space</kbd> pause &middot; <kbd>[</kbd><kbd>]</kbd> pen &middot; <kbd>1</kbd>&ndash;<kbd>9</kbd><kbd>0</kbd> tools &middot; <kbd>WASD</kbd> move &middot; <kbd>K</kbd> replaces W material shortcut</span>
   </div>
+  <footer id="visitor-footer">Visitors: <span id="visitor-total">—</span></footer>
 </div>
 <script>
 "use strict";
