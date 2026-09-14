@@ -163,7 +163,6 @@
       <button class="cell opt" id="o-view">View <em>Blob</em></button>
       <button class="cell opt" id="o-clear" title="Clear the entire world">Clear</button>
       <button class="cell opt" id="o-run">Stop</button>
-      <button class="cell opt" id="o-demo">Demo</button>
       <button class="cell opt" id="o-walls">Edge <em>On</em></button>
     </div>
   </div>
@@ -4892,7 +4891,6 @@ $('o-speed').onclick = () => { ui.speed = (ui.speed + 1) % SPEEDS.length; refres
 $('o-view').onclick = () => { ui.view = (ui.view + 1) % VIEWS.length; refreshUI(); };
 $('o-run').onclick = () => { ui.running = !ui.running; refreshUI(); };
 $('o-clear').onclick = () => clearAll();
-$('o-demo').onclick = () => loadDemo();
 $('o-walls').onclick = () => { edgeOn = !edgeOn; refreshUI(); };
 window.addEventListener('keydown', e => {
   if(e.ctrlKey||e.metaKey||e.altKey||(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]')))return;

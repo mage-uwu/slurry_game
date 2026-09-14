@@ -14,7 +14,7 @@ Open **http://localhost:8000** for the Monomage landing page, or **http://localh
 
 ## Play
 
-Choose materials and paint them into the world. Left/right clicking a material assigns it to that mouse button. Space pauses; `[` and `]` change brush size. The game opens to an empty world. Use **Demo** if you want a sample scene.
+Choose materials and paint them into the world. Left/right clicking a material assigns it to that mouse button. Space pauses; `[` and `]` change brush size. The game opens to an empty world.
 
 **Light:** place a light, then wire a turbine's P terminal or a gate output to either side. Both terminals are connected internally, so wire the other side to the next light to make a chain. Lights do not create or retain electrical power. Their anchored body blocks particles even when off. Powered lights glow and heat material on contact: water boils, ice/snow/jelly melt, oil ignites, powder and nitro explode, and unprotected life dies into jelly. Thermophiles tolerate the heat; frozen cells thaw. Up to 64 lights share the existing machine contact map/pass, with constant-time lookup per particle.
 
