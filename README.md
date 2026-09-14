@@ -31,6 +31,8 @@ Traits are sampled independently, so hybrids can inherit any of the 512 combinat
 
 **??? (0.1% of new Life strains)** is a reserved ultra-rare genome with charcoal cytoplasm, a bright white membrane and blinking eye organelles. It admits every particle material, including armored or frozen life, ice, acid and Meltdown. Matter stays chemically active while slowly passing through its membrane; undigested nitro can still explode. Absorbed particles enlarge the same body without creating daughters, seeds or new particles. It cannot starve, freeze, mutate or die from heat, acid, predators or explosions. Gravity and collisions still apply, and the editor can erase it. Feeding caches each parcel’s host by stable particle ID and validates contact before reusing it; a bounded local search runs only when needed. Body statistics are reduced by GPU workgroups, and each particle’s body correction runs in parallel. The body dispatch is skipped when no ??? exists. The CPU path reuses its snapshot scan and avoids per-particle body metadata. These changes retain gradual digestion, growth, gravity and immortality.
 
+**Spontaneous life:** jelly touching Meltdown has a very small chance (1 in 100,000 per birth roll) to become a new life particle, even with no existing cells in the world. The new genome uses the same independent trait probabilities as the Life brush. Each jelly particle gets one roll regardless of how many Meltdown particles touch it. The contact flag reuses the existing physics payload; a successful reaction converts the jelly in place before it melts, with no new particle allocation, neighbor search or simulation pass.
+
 All game code, shaders and interface styles are in `index.html`.
 
 ## Controller checks
@@ -43,6 +45,7 @@ node tests/mercury.test.cjs
 node tests/rare-organelles.test.cjs
 node tests/jelly-navigation.test.cjs
 node tests/unknown.test.cjs
+node tests/abiogenesis.test.cjs
 ```
 
 Optional native GPU regression checks, with Node.js, Python, NumPy and wgpu installed:
