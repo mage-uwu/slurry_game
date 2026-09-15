@@ -126,3 +126,9 @@ Mercury rendering uses its stored temperature in Pixel, Smooth and Dots views on
 Steel is a stiff particle approximation rather than an exact rigid-body solver. Very large, thin structures can flex, and extreme separation can break links. Adjacent compatible steel particles can bond together. Painting fills empty cells on a half-unit grid so new pieces have diagonal bracing. GPU constraint passes are enabled only after steel is painted or loaded, and disabled by clearing the world.
 
 `npm test` includes a steel floor-impact/shape-retention check, unchanged bond rest lengths under strain, erasure cleanup and snapshot validation. `python3 tests/steel-gpu.test.py` validates the affected WGSL kernels and compares the GPU's strained-block projection against the CPU implementation.
+
+### Molten steel
+
+Steel now stores and exchanges heat with nearby materials. At the game's simplified **1,500°C** melting threshold it releases its rigid bonds and becomes a dense, low-viscosity liquid with mild surface tension. Molten steel uses a continuous yellow pixel-art surface, pale highlights and a thermal halo. It transfers heat to nearby matter and can boil water or ignite combustibles. Cooling below **1,450°C** solidifies it, allowing new rigid bonds to form in its cooled shape; the small hysteresis avoids flickering between phases. Heat, liquid phase and solid bonds are preserved in saves.
+
+Meltdown (1,600°C in this simulation), sufficiently superheated mercury, or a Meltdown blast can melt steel. Existing fire, lava and lamp temperatures are below the melting threshold. This is gameplay tuning for a generic steel, not an alloy-specific phase diagram or latent-heat model. The material remains rigid until it melts. `npm test` covers the melt/flow/cool cycle and yellow palette; `python3 tests/mercury-gpu.test.py` also checks steel melting and solidification in the shared thermal kernel.

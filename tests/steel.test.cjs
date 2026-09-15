@@ -8,10 +8,15 @@ console.log('PASS steel rigidity, fixed rest lengths, erasure and project format
 
 // Pixel-art surface has a filled interior and four discrete metal shades.
 const html=fs.readFileSync(require('node:path').join(__dirname,'../slurry/index.html'),'utf8');
-const render=new Function('const TM=31,T_STEEL=22;return function '+html.slice(html.indexOf('renderSteelPixels(){'),html.indexOf('  blit(smooth) {')) )();
+const render=new Function('const TM=31,T_STEEL=22,T_MOLTEN_STEEL=23,isSteel=t=>t===22||t===23;return function '+html.slice(html.indexOf('renderSteelPixels(){'),html.indexOf('  blit(smooth) {')) )();
 const block=new Engine(40,40,200,makeParams({gy:0}));for(let y=12.25;y<18;y+=.5)for(let x=10.25;x<16;x+=.5)block.add(x,y,22);
 const view={FW:80,FH:80,S:2,e:block,img:{data:new Uint8ClampedArray(80*80*4)}};render.call(view);
 const colors=new Set();for(let y=25;y<35;y++)for(let x=21;x<31;x++)assert.equal(view.img.data[(y*80+x)*4+3],255,'steel interior has no particle gaps');
 for(let k=0;k<6400;k++)if(view.img.data[k*4+3])colors.add(Array.from(view.img.data.slice(k*4,k*4+3)).join(','));assert(colors.size<=4&&colors.size>=3);
 if(process.env.STEEL_PREVIEW)fs.writeFileSync(process.env.STEEL_PREVIEW,view.img.data);
 console.log('PASS continuous steel pixel surface and stepped metal palette');
+
+for(let i=0;i<block.n;i++)block.attr[i]=23|(1580<<16);render.call(view);
+const gold=view.img.data.slice((29*80+26)*4,(29*80+26)*4+3);assert(gold[0]===255&&gold[1]>180&&gold[2]<80,'molten steel is yellow-hot');
+if(process.env.MOLTEN_PREVIEW)fs.writeFileSync(process.env.MOLTEN_PREVIEW,view.img.data);
+console.log('PASS molten steel yellow pixel-art palette');

@@ -8,6 +8,6 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node tests/project-format.test.cjs && node tests/project-bridge.test.cjs && node tests/showcase.test.cjs && node tests/showcase-ui.test.cjs && node tests/visitors.test.cjs && node tests/player.test.cjs && node tests/lights.test.cjs && node tests/mercury-heat.test.cjs && node tests/steel.test.cjs"
+    "test": "node tests/project-format.test.cjs && node tests/project-bridge.test.cjs && node tests/showcase.test.cjs && node tests/showcase-ui.test.cjs && node tests/visitors.test.cjs && node tests/player.test.cjs && node tests/lights.test.cjs && node tests/mercury-heat.test.cjs && node tests/steel.test.cjs && node tests/molten-steel.test.cjs"
   }
 }

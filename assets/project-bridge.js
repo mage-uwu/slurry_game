@@ -62,7 +62,7 @@ function createSlurryProjectBridge() {
         const d=sim.device,q=d.queue,enc=d.createCommandEncoder();
         for(const b of [sim.idxBuf,sim.rareMeta,sim.rareHeads,sim.rareEmits,sim.cellAct,sim.cellWake])enc.clearBuffer(b);
         q.submit([enc.finish()]);
-        sim.hasSteel=a.attributes.some(v=>(v&31)===22);sim.nUpper=sim.alive=s.count;sim.pendN=0;sim.nextId=s.nextId;sim.lifeClock=s.clock;
+        sim.hasSteel=a.attributes.some(v=>((v&31)===22||(v&31)===23));sim.nUpper=sim.alive=s.count;sim.pendN=0;sim.nextId=s.nextId;sim.lifeClock=s.clock;
         // Keep frameId monotonic: delayed readbacks must not override the restored world.
         sim.frameId=Math.max(sim.frameId,s.frame);sim.playerRev=-1;
         if(s.count)for(const p of [0,1])for(const [buffer,array]of [[sim.st[p],a.state],[sim.at[p],a.attributes],[sim.pid[p],a.ids],[sim.bond[p],a.bonds],[sim.anchor[p],a.anchors]])q.writeBuffer(buffer,0,array);

@@ -64,3 +64,15 @@ for mode in range(3):
  assert red[0]>red[1]*5>red[2]>0 and red[3]==0,red
  assert white[0]>red[0] and white[1]/white[0]>red[1]/red[0] and white[3]==0,(red,white)
 print('PASS offscreen mercury glow: no cold/boiling glow, hot red to warm white, all views, additive alpha')
+# The shared thermal pass also melts and solidifies steel, preserving other materials.
+steel_attrs=np.array([22|(1479<<16),18,23|(1430<<16),1,1],np.uint32)
+dev.queue.write_buffer(a,0,steel_attrs)
+tp=dev.create_compute_pipeline(layout='auto',compute={'module':dev.create_shader_module(code=code['thermal']),'entry_point':'main'})
+tbg=dev.create_bind_group(layout=tp.get_bind_group_layout(0),entries=[{'binding':i,'resource':{'buffer':b}}for i,b in enumerate([u,st,a,cs,out])])
+for k in range(64):
+ uu[7]=k;uf[99]=k;dev.queue.write_buffer(u,0,uf)
+ enc=dev.create_command_encoder();p=enc.begin_compute_pass();p.set_pipeline(tp);p.set_bind_group(0,tbg);p.dispatch_workgroups(1);p.end();enc.copy_buffer_to_buffer(out,0,a,0,n*4);dev.queue.submit([enc.finish()])
+steel_result=np.frombuffer(dev.queue.read_buffer(a),np.uint32)
+assert steel_result[0]&31==23 and steel_result[2]&31==22,steel_result
+assert steel_result[1]==18 and steel_result[3]==1 and steel_result[4]==1,steel_result
+print('PASS native steel melting and cooling back into solid steel')
