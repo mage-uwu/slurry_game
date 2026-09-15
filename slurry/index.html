@@ -964,15 +964,23 @@ class Engine {
     [this.nx, this.fx] = [this.fx, this.nx]; [this.ny, this.fy] = [this.fy, this.ny];
   }
   steelProject() {
-    const ids=[];for(let i=0;i<this.n;i++)if((this.attr[i]&TM)===T_STEEL)ids.push(i);
+    // Resolve reciprocal links once per step, instead of once per solver iteration.
+    let first=-1;for(let i=0;i<this.n;i++)if((this.attr[i]&TM)===T_STEEL){first=i;break;}if(first<0)return;
+    const c=this.steelCache||(this.steelCache={ids:new Uint32Array(this.maxP),neighbors:new Int32Array(this.maxP*NB),rest:new Float64Array(this.maxP*NB),weight:new Float64Array(this.maxP*NB)});let count=0;
+    for(let i=first;i<this.n;i++)if((this.attr[i]&TM)===T_STEEL){c.ids[count++]=i;
+      for(let k=0;k<NB;k++){const slot=i*NB+k,b=this.bonds[slot];c.neighbors[slot]=-1;if(b===BOND_EMPTY)continue;const id=bondId(b),j=this.idx[id];
+        if(j>=this.n||(this.pid[j]&PID_MASK)!==id||(this.attr[j]&TM)!==T_STEEL)continue;
+        let back=BOND_EMPTY;for(let q=0;q<NB;q++){const bb=this.bonds[j*NB+q];if(bb!==BOND_EMPTY&&bondId(bb)===(this.pid[i]&PID_MASK)){back=bb;break;}}if(back===BOND_EMPTY)continue;
+        c.neighbors[slot]=j;c.rest[slot]=(bondLen(b)+bondLen(back))*.5;c.weight[slot]=.9/Math.max(1,bondCount(this.pid[i]),bondCount(this.pid[j]));
+      }
+    }
+    const ids=c.ids.subarray(0,count);
     for(let it=0;it<STEEL_ITERS;it++){
       for(const i of ids){const x=this.nx[i],y=this.ny[i];let dx=0,dy=0;
-        for(let k=0;k<NB;k++){const b=this.bonds[i*NB+k];if(b===BOND_EMPTY)continue;const id=bondId(b),j=this.idx[id];
-          if(j>=this.n||(this.pid[j]&PID_MASK)!==id||(this.attr[j]&TM)!==T_STEEL)continue;
-          let back=BOND_EMPTY;for(let q=0;q<NB;q++){const bb=this.bonds[j*NB+q];if(bb!==BOND_EMPTY&&bondId(bb)===(this.pid[i]&PID_MASK)){back=bb;break;}}if(back===BOND_EMPTY)continue;
+        for(let k=0;k<NB;k++){const slot=i*NB+k,j=c.neighbors[slot];if(j<0)continue;
           const rx=this.nx[j]-x,ry=this.ny[j]-y,r=Math.hypot(rx,ry);if(r<1e-9)continue;
-          const w=.9/Math.max(1,bondCount(this.pid[i]),bondCount(this.pid[j]));const c=(r-(bondLen(b)+bondLen(back))*.5)*w/r;
-          dx+=rx*c;dy+=ry*c;
+          const correction=(r-c.rest[slot])*c.weight[slot]/r;
+          dx+=rx*correction;dy+=ry*correction;
         }
         let xx=x+dx,yy=y+dy;if(this.isWall(xx,yy)){if(!this.isWall(x,yy))xx=x;else if(!this.isWall(xx,y))yy=y;else{xx=x;yy=y;}}
         if(this.edge){xx=Math.max(.001,Math.min(this.W-.001,xx));yy=Math.max(.001,Math.min(this.H-.001,yy));}
@@ -2802,7 +2810,8 @@ ${SPAN}
   Xo[i] = vec4f(x + s * k, xi.zw + s * k);
 }`;
 // Jacobi steel projection: reciprocal fixed-length links preserve momentum and resist shear.
-const SH_STEEL = HDR + /* wgsl */`
+// Cache layout: indirect xyz, count, compact particle indices, then 8 (neighbor,rest,weight) links per particle.
+const SH_STEEL_PREP = HDR + /* wgsl */`
 @group(0) @binding(1) var<storage,read> att:array<u32>;
 @group(0) @binding(2) var<storage,read> pid:array<u32>;
 @group(0) @binding(3) var<storage,read> bonds:array<u32>;
@@ -2810,14 +2819,27 @@ const SH_STEEL = HDR + /* wgsl */`
 @group(0) @binding(5) var<storage,read> starts:array<u32>;
 @group(0) @binding(6) var<storage,read> Xi:array<vec4f>;
 @group(0) @binding(7) var<storage,read_write> Xo:array<vec4f>;
-@group(0) @binding(8) var<storage,read> walls:array<u32>;
+@group(0) @binding(8) var<storage,read_write> cache:array<atomic<u32>>;
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ let i=gid.x;if(i==0u){atomicStore(&cache[1],1u);atomicStore(&cache[2],1u);}let n=starts[P.nc];if(i>=n){return;}
+ Xo[i]=Xi[i];if((att[i]&TM)!=22u){return;}
+ let slot=atomicAdd(&cache[3],1u);atomicStore(&cache[4u+slot],i);atomicMax(&cache[0],(slot+256u)/256u);
+ for(var k=0u;k<NB;k++){let off=4u+P.nUpper+(i*NB+k)*3u;atomicStore(&cache[off],0xFFFFFFFFu);let b=bonds[i*NB+k];if(b==BOND_EMPTY){continue;}
+  let id=bondId(b);let j=idx[id];if(j>=n||(pid[j]&ID_MASK)!=id||(att[j]&TM)!=22u){continue;}
+  var back=BOND_EMPTY;for(var q=0u;q<NB;q++){let bb=bonds[j*NB+q];if(bb!=BOND_EMPTY&&bondId(bb)==(pid[i]&ID_MASK)){back=bb;break;}}if(back==BOND_EMPTY){continue;}
+  atomicStore(&cache[off],j);atomicStore(&cache[off+1u],bitcast<u32>((bondLen(b)+bondLen(back))*0.5));atomicStore(&cache[off+2u],bitcast<u32>(0.9/f32(max(1u,max(bondCount(pid[i]),bondCount(pid[j]))))));
+ }
+}`;
+const SH_STEEL = HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read> cache:array<u32>;
+@group(0) @binding(2) var<storage,read> Xi:array<vec4f>;
+@group(0) @binding(3) var<storage,read_write> Xo:array<vec4f>;
+@group(0) @binding(4) var<storage,read> walls:array<u32>;
 fn steelWall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
- let i=gid.x;let n=starts[P.nc];if(i>=n){return;}let xi=Xi[i];Xo[i]=xi;if((att[i]&TM)!=22u){return;}
- var d=vec2f(0.0);
- for(var k=0u;k<NB;k++){let b=bonds[i*NB+k];if(b==BOND_EMPTY){continue;}let id=bondId(b);let j=idx[id];if(j>=n||(pid[j]&ID_MASK)!=id||(att[j]&TM)!=22u){continue;}
-  var back=BOND_EMPTY;for(var q=0u;q<NB;q++){let bb=bonds[j*NB+q];if(bb!=BOND_EMPTY&&bondId(bb)==(pid[i]&ID_MASK)){back=bb;break;}}if(back==BOND_EMPTY){continue;}
-  let rv=Xi[j].xy-xi.xy;let r=length(rv);if(r<1e-9){continue;}let w=0.9/f32(max(1u,max(bondCount(pid[i]),bondCount(pid[j]))));d+=rv*((r-(bondLen(b)+bondLen(back))*0.5)*w/r);
+ if(gid.x>=cache[3]){return;}let i=cache[4u+gid.x];let xi=Xi[i];var d=vec2f(0.0);
+ for(var k=0u;k<NB;k++){let off=4u+P.nUpper+(i*NB+k)*3u;let j=cache[off];if(j==0xFFFFFFFFu){continue;}
+  let rv=Xi[j].xy-xi.xy;let r=length(rv);if(r<1e-9){continue;}d+=rv*((r-bitcast<f32>(cache[off+1u]))*bitcast<f32>(cache[off+2u])/r);
  }
  var p=xi.xy+d;if(steelWall(p)){if(!steelWall(vec2f(xi.x,p.y))){p.x=xi.x;}else if(!steelWall(vec2f(p.x,xi.y))){p.y=xi.y;}else{p=xi.xy;}}
  if(P.edge!=0u){p=clamp(p,vec2f(0.001),vec2f(f32(P.gw),f32(P.gh))-0.001);}Xo[i]=vec4f(p,xi.zw);
@@ -4242,6 +4264,8 @@ class GpuSim {
     this.rareMeta=B(ID_SPACE*32,U.STORAGE|U.COPY_DST);this.rareHeads=B(RARE_HEAD_WORDS*4,U.STORAGE|U.COPY_DST|U.INDIRECT);this.rareNext=B(M*4,U.STORAGE);this.rareSnap=B(M*32,U.STORAGE);this.rareEmits=B(4112,U.STORAGE|U.COPY_DST|U.COPY_SRC);
     this.rareReads=Array.from({length:3},()=>({buf:B(4112,U.COPY_DST|U.MAP_READ),busy:false}));
     this.pUnknownBody=cp(SH_UNKNOWN_BODY,'unknown-body');this.pRareList=cp(SH_RARE_LIST,'rare-list');this.pRareLocal=cp(SH_RARE_LOCAL,'rare-local');this.pRareBody=cp(SH_RARE_BODY,'rare-body');
+    this.steelCache=B((4+M*(1+NB*3))*4,U.STORAGE|U.COPY_DST|U.INDIRECT);
+    this.pSteelPrep=cp(SH_STEEL_PREP,'steel-prep');
     this.pSteel=cp(SH_STEEL,'steel');
     this.pThermal=cp(SH_MERCURY_THERMAL,'mercury-thermal');
     this.pPlayer=cp(SH_PLAYER,'player');this.pPlayerPush=cp(SH_PLAYER_PUSH,'player-push');
@@ -4275,7 +4299,8 @@ class GpuSim {
     const bg = (pipe, res) => device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: res.map((r, i) => ({ binding: i, resource: r instanceof GPUBuffer ? { buffer: r } : r })) });
     const u = this.uni, st = this.st, at = this.at, X = this.X;
     this.bg = [0, 1].map(p => { const I = p, O = 1 - p; return {
-      steel:[0,1].map(d=>bg(this.pSteel,[u,at[O],this.pid[O],this.bond[O],this.idxBuf,this.starts,X[d],X[1-d],this.wallBuf])),
+      steelPrep:[0,1].map(d=>bg(this.pSteelPrep,[u,at[O],this.pid[O],this.bond[O],this.idxBuf,this.starts,X[d],X[1-d],this.steelCache])),
+      steel:[0,1].map(d=>bg(this.pSteel,[u,this.steelCache,X[d],X[1-d],this.wallBuf])),
       thermal:bg(this.pThermal,[u,st[O],at[O],this.starts,this.thermalAt]),
       unknownBody:bg(this.pUnknownBody,[u,st[O],this.rareSnap,this.rareHeads,this.wallBuf]),
       rareList:bg(this.pRareList,[u,st[O],at[I],this.pid[O],this.rareMeta,this.rareHeads,this.rareNext,this.rareSnap,this.rareEmits]),
@@ -4435,7 +4460,7 @@ class GpuSim {
       const timeThis = this.hasTS && s === 0 && physics;
       enc.clearBuffer(this.counts);
       enc.clearBuffer(this.cellAct);
-      if (physics) {enc.clearBuffer(this.blast[this.bw]);enc.clearBuffer(this.rareHeads);if(s===0)enc.clearBuffer(this.rareEmits);}
+      if (physics) {if(this.hasSteel)enc.clearBuffer(this.steelCache,0,16);enc.clearBuffer(this.blast[this.bw]);enc.clearBuffer(this.rareHeads);if(s===0)enc.clearBuffer(this.rareEmits);}
       let pass = enc.beginComputePass(timeThis ? { timestampWrites: { querySet: this.qset, beginningOfPassWriteIndex: 0 } } : undefined);
       pass.setPipeline(this.pCount); pass.setBindGroup(0, g.count); pass.dispatchWorkgroups(wg);
       pass.setPipeline(this.pWake); pass.setBindGroup(0, this.bgWake[this.bw]); pass.dispatchWorkgroups(Math.ceil(NC / WG));
@@ -4462,7 +4487,7 @@ class GpuSim {
         pass.setPipeline(this.pContact);
         for (let k = 0; k < P.citers; k++) { pass.setBindGroup(0, g.contact[x]); pass.dispatchWorkgroups(wg); x = 1 - x; }
         pass.setPipeline(this.pFric); pass.setBindGroup(0, g.fric[x]); pass.dispatchWorkgroups(wg); x = 1 - x;
-        if(this.hasSteel){pass.setPipeline(this.pSteel);for(let k=0;k<STEEL_ITERS;k++){pass.setBindGroup(0,g.steel[x]);pass.dispatchWorkgroups(wg);x=1-x;}}
+        if(this.hasSteel){pass.setPipeline(this.pSteelPrep);pass.setBindGroup(0,g.steelPrep[x]);pass.dispatchWorkgroups(wg);pass.setPipeline(this.pSteel);for(let k=0;k<STEEL_ITERS;k++){pass.setBindGroup(0,g.steel[x]);pass.dispatchWorkgroupsIndirect(this.steelCache,0);x=1-x;}}
         pass.setPipeline(this.pFinal); pass.setBindGroup(0, g.final[x][this.bw]); pass.dispatchWorkgroups(wg);
         this.bw = 1 - this.bw;
         pass.setPipeline(this.pRareList);pass.setBindGroup(0,g.rareList);pass.dispatchWorkgroups(wg);
