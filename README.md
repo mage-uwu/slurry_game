@@ -1,6 +1,6 @@
 # Monomage / Slurry
 
-A single-file particle physics sandbox with fluids, solids, fire, evolving cells, Meltdown, turbines, motors, wires, lights and NAND gates.
+A particle physics sandbox with fluids, solids, fire, evolving cells, Meltdown, turbines, motors, wires, lights and NAND gates.
 
 ## Run locally
 
@@ -10,7 +10,7 @@ No build step or package installation is required. From this directory, run:
 python3 -m http.server 8000
 ```
 
-Open **http://localhost:8000** for the Monomage landing page, or **http://localhost:8000/slurry/** to play. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve the repository root over HTTPS for WebGPU access. No build command is needed: `/index.html` is the landing page and `/slurry/index.html` is the complete game. Cloudflare deploys `worker.js` with repository-root static assets using `wrangler.jsonc`; `/slurry/` resolves to the game automatically. The `.assetsignore` file excludes server code and tests from public assets.
+Open **http://localhost:8000** for the Monomage landing page, or **http://localhost:8000/slurry/** to play. The game uses WebGPU when available and falls back to its CPU simulation. Static hosting should serve the repository root over HTTPS for WebGPU access. No build command is needed: `/index.html` is the landing page and `/slurry/index.html` is the game entry point. Keep the `assets/` directory alongside it. Cloudflare deploys `worker.js` with repository-root static assets using `wrangler.jsonc`; `/slurry/` resolves to the game automatically. The `.assetsignore` file excludes server code and tests from public assets.
 
 ## Play
 
@@ -37,7 +37,7 @@ Traits are sampled independently, so hybrids can inherit any of the 512 combinat
 
 **Spontaneous life:** jelly touching Meltdown has a very small chance (1 in 100,000 per birth roll) to become a new life particle, even with no existing cells in the world. The new genome uses the same independent trait probabilities as the Life brush. Each jelly particle gets one roll regardless of how many Meltdown particles touch it. The contact flag reuses the existing physics payload; a successful reaction converts the jelly in place before it melts, with no new particle allocation, neighbor search or simulation pass.
 
-All game code, shaders and interface styles are in `slurry/index.html`. The English homepage is at `/` (`index.html`), and the Japanese homepage is at `/ja/` (`ja/index.html`). The header language links work without JavaScript. Each page has its own language tag, translated description and image alt text, canonical URL, and reciprocal language links for search engines. Both play links open `/slurry/`.
+The simulation and shaders are in `slurry/index.html`; shared save validation, the engine bridge, and the showcase interface are in `assets/showcase-*.js`, `assets/project-bridge.js`, and `assets/showcase.css`. The English homepage is at `/` (`index.html`), and the Japanese homepage is at `/ja/` (`ja/index.html`). The header language links work without JavaScript. Each page has its own language tag, translated description and image alt text, canonical URL, and reciprocal language links for search engines. Both play links open `/slurry/`.
 
 The landing page is a minimal static homepage: the Monomage Games header, a real gameplay screenshot in `assets/slurry.jpg`, and an invitation to play. It loads no game engine, fonts or third-party assets. A small first-party script updates the visitor total in the bottom-right footer.
 
@@ -85,3 +85,22 @@ node tests/visitors.test.cjs
 ```
 
 This exercises repeat visits, concurrent increments, malformed requests, static fallback, and persistence across Worker restarts.
+
+
+## Public project showcase
+
+Use **Character** to name the player, **Save project** to publish the current world, and **Showcase** to browse previews sorted by newest or most liked. **Load** replaces the current world after confirmation and opens it paused. **Fork** loads a copy, keeps your character name, and credits the original when you publish. The original is never overwritten. A successful new save, including a published fork, consumes one daily slot; browsing, loading, and editing locally do not.
+
+- Four new projects per anonymous browser profile per UTC calendar day. The server also applies a four-save daily network cap to deter cookie-reset spam. People sharing a public IP share that additional cap. This is an anonymous sandbox, not verified accounts: different browsers/devices are separate profiles, and IP rotation is not prevented.
+- Profiles use random server-issued secrets in Secure, HttpOnly, SameSite cookies. Editing local storage cannot change the quota. Network keys are salted hashes; raw IP addresses are not stored. Short-lived rate-limit records expire automatically. There is no sign-in, recovery, or cross-device profile synchronization.
+- Public project and character names replace common profanity/slurs with `♥♥♥`, including the explicitly requested terms, common leetspeak, spacing, punctuation, zero-width and accent obfuscations. Filtering runs on the server as well as the client. Innocent names such as Dickinson and Scunthorpe are retained. A word filter cannot identify every possible abusive spelling or drawing.
+- One thumbs-up per profile per project; repeat requests are idempotent, and creators cannot like their own projects. A new anonymous profile is a separate voter. Votes can be removed.
+- A save contains particle positions and momentum, material/genome words, IDs and bonds, sleep anchors, walls, wires, circuit signals, turbines, lights, NAND gates, character state/name, gravity, speed, and view. Runtime sensing/rare-body caches rebuild after load; transient explosions and random-generator state are not checkpointed. A CPU device refuses worlds above its 12,000-particle capacity without replacing the current world. WebGPU supports all 131,072 particles.
+- The 16 MiB request limit is checked while streaming. The server validates the version, dimensions, finite numbers, array lengths, types, and machine limits, then generates previews from validated world data. Snapshot data is split into 250,000-character SQLite rows. Public lists do not include full snapshots, profile IDs, tokens, or network hashes.
+- Save IDs make retries safe after lost responses. Quotas, insertion and votes use SQLite transactions. Public submissions persist across Worker deployments. No delete/overwrite endpoint is exposed.
+
+`showcase-worker.js` exports the `Showcase` SQLite Durable Object. The included `SHOWCASE` binding and additive `showcase-v1` migration provision its database during the existing Cloudflare deployment; no dashboard database, API key or third-party service is needed. Preserve both existing migration tags and the `slurry-showcase-v1` object name. The original visitor counter remains separate.
+
+Run `npm ci`, then `npm run dev` for the complete application, or `npm run deploy` to deploy. A plain static server still runs the simulation and character naming, but public saves/loads need the Worker. All showcase APIs live under `/api/showcase`: `/session`, `/projects`, `/projects/:id`, and `/projects/:id/like`. Mutations require a same-origin JSON request. General requests and writes are rate limited on the server.
+
+Run `npm test` for format validation/moderation, CPU snapshot restoration, API concurrency/persistence/full-capacity checks, the DOM save/load/fork flow, and existing visitor/player/light regressions. The DOM test does not replace a real browser layout/WebGPU smoke test. `npx wrangler deploy --dry-run` checks the Worker bundle and bindings without publishing.

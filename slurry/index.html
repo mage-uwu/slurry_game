@@ -3,6 +3,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Slurry</title>
 <script src="/assets/visitors.js" defer></script>
+<script src="/assets/showcase-shared.js"></script>
+<script src="/assets/project-bridge.js"></script>
+<script src="/assets/showcase.js" defer></script>
+<link rel="stylesheet" href="/assets/showcase.css">
 <meta name="description" content="A GPU smoothed-particle sandbox: twenty materials that pour, pile, burn, freeze, explode - and one that is alive.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4037,10 +4041,10 @@ class GpuSim {
     this.st = [B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
     this.at = [B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
     this.key = B(M * 4, U.STORAGE);
-    this.pid = [B(M * 4, U.STORAGE | U.COPY_DST), B(M * 4, U.STORAGE | U.COPY_DST)];
-    this.bond = [B(M * NB * 4, U.STORAGE | U.COPY_DST), B(M * NB * 4, U.STORAGE | U.COPY_DST)];
-    this.idxBuf = B((ID_SPACE + Math.ceil(GW/4)*Math.ceil(GH/4)*24 + M*3) * 4, U.STORAGE);
-    this.anchor = [B(M * 16, U.STORAGE | U.COPY_DST), B(M * 16, U.STORAGE | U.COPY_DST)];
+    this.pid = [B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
+    this.bond = [B(M * NB * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * NB * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
+    this.idxBuf = B((ID_SPACE + Math.ceil(GW/4)*Math.ceil(GH/4)*24 + M*3) * 4, U.STORAGE | U.COPY_DST);
+    this.anchor = [B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
     this.cellAct = B(NC * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC); this.cellWake = B(NC * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC);
     this.counts = B((NC + 1) * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC);
     this.starts = B((NC + 2) * 4, U.STORAGE | U.COPY_SRC);
@@ -4864,7 +4868,7 @@ function loadDemo() {
     fillRect(142, 25, 156, 32, T_POWDER, 0.5);
   }
 }
-function clearAll() { player.reset(); machines.clear(); epoch++; sim.clear(); occReset(); walls.fill(0); wallsDirty = true; }
+function clearAll() { window.dispatchEvent(new Event('slurry-clear')); player.reset(); machines.clear(); epoch++; sim.clear(); occReset(); walls.fill(0); wallsDirty = true; }
 
 // ---------- UI ----------
 function refreshUI() {
@@ -4896,7 +4900,7 @@ $('o-run').onclick = () => { ui.running = !ui.running; refreshUI(); };
 $('o-clear').onclick = () => clearAll();
 $('o-walls').onclick = () => { edgeOn = !edgeOn; refreshUI(); };
 window.addEventListener('keydown', e => {
-  if(e.ctrlKey||e.metaKey||e.altKey||(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]')))return;
+  if(document.querySelector('dialog[open]')||e.ctrlKey||e.metaKey||e.altKey||(e.target.closest&&e.target.closest('input,textarea,select,[contenteditable="true"]')))return;
   if(['KeyW','KeyA','KeyS','KeyD'].includes(e.code)){e.preventDefault();player.keys.add(e.code);return;}
   if (e.key === ' ') { e.preventDefault(); ui.running = !ui.running; }
   else if (e.key === '[') ui.pen = Math.max(0, ui.pen - 1);
@@ -4972,6 +4976,7 @@ function drawCursor() {
   c.clearRect(0, 0, w, h);
   drawMachines(c,w/W,h/H);
   player.draw(c,w/W,h/H);
+  if(player.active&&player.name){c.save();c.font='11px monospace';c.textAlign='center';c.fillStyle='#fff';c.shadowColor='#000';c.shadowBlur=4;c.fillText(player.name,player.x*w/W,(player.y-5.3)*h/H);c.restore();}
   if (!ptr.inside) return;
   const s = w / W, R = PEN_R[ui.pen] * s;
   const name = ptr.down && ptr.btn === 'R' ? ui.toolR : ui.toolL;
@@ -4994,6 +4999,7 @@ function drawCursor() {
 let last = performance.now(), acc = 0, fpsT = last, fpsN = 0, shaking = false, kernelShown = false;
 const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function tick(now) {
+  if(projectBusy){last=now;requestAnimationFrame(tick);return;}
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   let steps = 0;
   if (ui.running) { acc += dt * STEP_HZ * SPEEDS[ui.speed][0]; steps = Math.floor(acc); acc -= steps; steps = Math.min(steps, sim.kind === 'CPU' ? 3 : 10); }
@@ -5036,7 +5042,8 @@ async function boot() {
   }
   if (sim.kind === 'GPU') { showMsg('Drag to pour &middot; right-drag erases &middot; choose an element to begin'); hintShown = true; }
   refreshUI(); clearAll(); layout();
-  window.__slurry = { get sim() { return sim; }, ui, occ, player };
+  window.__slurry = { get sim() { return sim; }, ui, occ, player, projects: createSlurryProjectBridge() };
+  window.dispatchEvent(new Event('slurry-ready'));
   if (!window.__noAuto) requestAnimationFrame(t => { last = t; tick(t); });
 }
 boot();

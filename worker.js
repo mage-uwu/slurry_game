@@ -1,4 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
+import { showcaseFetch } from './showcase-worker.js';
+export { Showcase } from './showcase-worker.js';
 
 const COOKIE = '__Host-monomage-visitor';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -29,6 +31,7 @@ export class VisitorCounter extends DurableObject {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/showcase' || url.pathname.startsWith('/api/showcase/')) return showcaseFetch(request, env);
     if (url.pathname !== '/api/visitors') return env.ASSETS.fetch(request);
     if (request.method !== 'GET' && request.method !== 'POST') {
       return new Response(null, { status: 405, headers: { ...noCache, Allow: 'GET, POST' } });

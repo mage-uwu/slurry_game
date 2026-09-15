@@ -1,4 +1,5 @@
 worker.js
+showcase-worker.js
 wrangler.jsonc
 README.md
 tests/

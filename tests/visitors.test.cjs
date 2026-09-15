@@ -9,6 +9,7 @@ const { Miniflare } = require('miniflare');
   const create = () => new Miniflare({
     name: 'slurry-game', modules: true, scriptPath: path.join(root, 'worker.js'),
     compatibilityDate: '2025-09-01',
+    modulesRules: [{ type: 'ESModule', include: ['**/*.js'] }],
     durableObjects: { VISITORS: { className: 'VisitorCounter', useSQLite: true } },
     durableObjectsPersist: state,
     serviceBindings: { ASSETS: () => new Response('static site', { status: 200 }) },
