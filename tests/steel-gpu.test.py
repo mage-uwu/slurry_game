@@ -57,3 +57,11 @@ p.end();dev.queue.submit([enc.finish()]);words=np.frombuffer(dev.queue.read_buff
 for target in x:
  result=np.frombuffer(dev.queue.read_buffer(target),np.float32).reshape(n,4);np.testing.assert_array_equal(result[::3],before.reshape(n,4)[::3]);assert np.isfinite(result).all()
 print('PASS mixed steel/molten world compaction, cache rebuild and preserved non-steel state')
+# The packed pixel shade carries the ignition warning even below incandescence.
+for temperature in [20,249,250,251,1000]:
+ dev.queue.write_buffer(attr,0,np.full(n,22|((temperature-20)<<16),np.uint32))
+ for mode in range(3):
+  rp.view(np.uint32)[4]=mode;dev.queue.write_buffer(ru,0,rp);enc=dev.create_command_encoder();enc.clear_buffer(owner);enc.clear_buffer(coverage);p=enc.begin_compute_pass();p.set_pipeline(pp);p.set_bind_group(0,bg);p.dispatch_workgroups((n+255)//256);p.end();dev.queue.submit([enc.finish()])
+  ids=np.frombuffer(dev.queue.read_buffer(owner),np.uint32).reshape(80,80);shade=(ids[22,35]>>5)&255
+  assert shade==(255 if temperature>=250 else 0),(temperature,mode,shade)
+print('PASS GPU ignition-warning shade at 250 C across all three views')

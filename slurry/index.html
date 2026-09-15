@@ -358,12 +358,13 @@ function mercuryStore(a,e,roll){const q=Math.min(4095,Math.max(0,Math.floor(e*8+
  return ((a&0xFF00)|(q<<16)|t|A_FRESH)>>>0;}
 const isSteel=t=>t===T_STEEL||t===T_MOLTEN_STEEL;
 const isMetal=t=>isMercury(t)||isSteel(t);
+const STEEL_FIRE_TEMP=250; // Visible hazard cue, intentionally below physical incandescence.
 const steelTemp=a=>20+((a>>>16)&4095);
 function steelStore(a,temp,roll){const q=Math.max(0,Math.min(4095,Math.floor(temp-20+roll)));let t=a&TM;
  if(t===T_STEEL&&q>=1480)t=T_MOLTEN_STEEL;else if(t===T_MOLTEN_STEEL&&q<=1430)t=T_STEEL;
  return ((a&0xFF00)|(q<<16)|t|A_FRESH)>>>0;}
 function materialTemp(a){const t=a&TM;if(isSteel(t))return steelTemp(a);if(isMercury(t))return mercuryTemp(a);if(t===T_MELTDOWN)return 1600;if(t===T_LAVA)return 1100;if(t===T_FIRE||(t===T_OIL&&(a&A_LIT)))return 700;if(t===T_STEAM)return 100;if(t===T_ICE||t===T_SNOW)return 0;return 20;}
-function mercuryHeat(a,target){if(!isMetal(a&TM))return 0;const threshold=target===T_WATER?100:target===T_ICE||target===T_SNOW?0:target===T_OIL||target===T_POWDER||target===T_NITRO?250:60;return Math.max(0,Math.min(2,(materialTemp(a)-threshold)/250));}
+function mercuryHeat(a,target){if(!isMetal(a&TM))return 0;const threshold=target===T_WATER?100:target===T_ICE||target===T_SNOW?0:target===T_OIL||target===T_POWDER||target===T_NITRO?STEEL_FIRE_TEMP:60;return Math.max(0,Math.min(2,(materialTemp(a)-threshold)/250));}
 const WAKE_HOLD = 12, SLEEP_WINDOW = 24;
 const ID_BITS = 20, ID_SPACE = 1 << ID_BITS, ID_MASK = ID_SPACE - 1, NB = 8, BOND_EMPTY = 0xFFFFFFFF;
 const bondId = b => b >>> 12, bondLen = b => (b & 4095) / 2048;
@@ -1637,7 +1638,7 @@ fn isMetal(t:u32)->bool{return isMercury(t)||isSteel(t);}
 fn steelTemp(a:u32)->f32{return 20.0+f32((a>>16u)&4095u);}
 fn steelStore(a:u32,temp:f32,roll:f32)->u32{let q=u32(clamp(floor(temp-20.0+roll),0.0,4095.0));var t=a&TM;if(t==22u&&q>=1480u){t=23u;}else if(t==23u&&q<=1430u){t=22u;}return (a&0xFF00u)|(q<<16u)|t|A_FRESH;}
 fn materialTemp(a:u32)->f32{let t=a&TM;if(isSteel(t)){return steelTemp(a);}if(isMercury(t)){return mercuryTemp(a);}if(t==18u){return 1600.0;}if(t==7u){return 1100.0;}if(t==4u||(t==2u&&(a&A_LIT)!=0u)){return 700.0;}if(t==15u){return 100.0;}if(t==14u||t==13u){return 0.0;}return 20.0;}
-fn mercuryHeat(a:u32,recipient:u32)->f32{if(!isMetal(a&TM)){return 0.0;}var threshold=60.0;if(recipient==1u){threshold=100.0;}else if(recipient==14u||recipient==13u){threshold=0.0;}else if(recipient==2u||recipient==9u||recipient==5u){threshold=250.0;}return clamp((materialTemp(a)-threshold)/250.0,0.0,2.0);}
+fn mercuryHeat(a:u32,recipient:u32)->f32{if(!isMetal(a&TM)){return 0.0;}var threshold=60.0;if(recipient==1u){threshold=100.0;}else if(recipient==14u||recipient==13u){threshold=0.0;}else if(recipient==2u||recipient==9u||recipient==5u){threshold=${STEEL_FIRE_TEMP}.0;}return clamp((materialTemp(a)-threshold)/250.0,0.0,2.0);}
 fn isFluid(t: u32) -> bool { return t == 1u || t == 2u || t == 5u || t == 7u || t == 10u || t == 12u || t == 16u || t == 17u || t == 23u; }
 fn isGran(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || t == 13u || t == 14u; }
 // ---- life: the attribute word means something else for a living particle ----
@@ -3264,6 +3265,7 @@ const SH_PIX = RHDR + /* wgsl */`
   if (t == 1u || t == 10u) { sh = clamp(length(s.xy - s.zw) * 3.0, 0.0, 1.0); }
   else if (t == 2u) { sh = select(0.0, 1.0, (a & A_LIT) != 0u); }
   else if (t == 4u || t == 15u) { sh = clamp(f32((a >> 16u) & 0xFFFu) / lifeOf(a), 0.0, 1.0); }
+  else if (t == 22u) { sh = select(0.0,1.0,20u+((a>>16u)&4095u)>=${STEEL_FIRE_TEMP}u); }
   else if (t == 7u) { sh = lavaHeat(a); }
   else if (t == 16u) { sh = seed; }   // life: the shade byte is the appearance genome itself
   else { sh = fract(seed * 7.31); }
@@ -3499,6 +3501,7 @@ fn steamPix(age: f32) -> vec3f {
     let bottom=steelY+1u>=u32(R.pxH)||(pid[steelK+steelDim]&TM)!=steelType||cov[steelK+steelDim]<276u;
     var col=vec3f(0.43,0.48,0.56);
     if(top){col=vec3f(.78,.83,.9);}else if(bottom){col=vec3f(.25,.29,.36);}else if(cov[steelK]<1024u){col=vec3f(.57,.62,.70);}
+    if(steelType==22u&&((pid[steelK]>>5u)&255u)>0u){col=vec3f(.82,.12,.055);if(top){col=vec3f(1.0,.38,.23);}else if(bottom){col=vec3f(.40,.035,.025);}else if(cov[steelK]<1024u){col=vec3f(.95,.22,.10);}}
     if(steelType==23u){col=vec3f(1.0,.75,.08);if(top){col=vec3f(1.0,.97,.70);}else if(bottom){col=vec3f(.94,.51,.025);}else if(cov[steelK]<1024u){col=vec3f(1.0,.87,.25);}}
     return vec4f(col+flash*.1,1.0);
   }
@@ -3543,7 +3546,7 @@ fn steamPix(age: f32) -> vec3f {
     else if (which == 14u) { col = icePix(depth, surf); }
     else if (which == 15u) { col = steamPix(shade); }
     else if(which==23u){col=vec3f(1.0,.75,.08);}
-    else if (which == 22u) { col=vec3f(.43,.48,.56); }
+    else if (which == 22u) { col=select(vec3f(.43,.48,.56),vec3f(.82,.12,.055),shade>0.0); }
     else if (which == 18u) { col = select(vec3f(0.16, 0.72, 0.025), vec3f(0.65, 1.0, 0.22), surf); col += vec3f(0.025, 0.10, 0.015) * shade; }
     else { col = lifePix(u32(shade * 255.0 + 0.5), depth, rim, (rhash(cxi * 73u + cyi * 3571u) & 3u) == 0u); }
     return vec4f(col + flash * 0.1, 1.0);
@@ -4881,17 +4884,17 @@ class CpuSim {
     this.ctx.drawImage(this.lifeCanvas, 0, 0, this.canvas.width, this.canvas.height);
   }
   renderSteelPixels(){
-    const {FW,FH,S,e}=this;const field=this.steelField||(this.steelField=new Float32Array(FW*FH));field.fill(0);const liquid=this.steelLiquid||(this.steelLiquid=new Float32Array(FW*FH));liquid.fill(0);let any=false;
+    const {FW,FH,S,e}=this;const field=this.steelField||(this.steelField=new Float32Array(FW*FH));field.fill(0);const liquid=this.steelLiquid||(this.steelLiquid=new Float32Array(FW*FH));liquid.fill(0);const hot=this.steelHot||(this.steelHot=new Uint8Array(FW*FH));hot.fill(0);let any=false;
     const radius=.782*S;
-    for(let i=0;i<e.n;i++){if(!isSteel(e.attr[i]&TM))continue;any=true;const cx=e.qx[i]*S,cy=e.qy[i]*S;
+    for(let i=0;i<e.n;i++){if(!isSteel(e.attr[i]&TM))continue;any=true;const burning=steelTemp(e.attr[i])>=STEEL_FIRE_TEMP;const cx=e.qx[i]*S,cy=e.qy[i]*S;
       for(let y=Math.max(0,Math.floor(cy-radius));y<=Math.min(FH-1,Math.ceil(cy+radius));y++)for(let x=Math.max(0,Math.floor(cx-radius));x<=Math.min(FW-1,Math.ceil(cx+radius));x++){
-        const r2=((x+.5-cx)**2+(y+.5-cy)**2)/(radius*radius);if(r2<1){field[y*FW+x]+=(1-r2)**2;if((e.attr[i]&TM)===T_MOLTEN_STEEL)liquid[y*FW+x]+=(1-r2)**2;}
+        const r2=((x+.5-cx)**2+(y+.5-cy)**2)/(radius*radius);if(r2<1){field[y*FW+x]+=(1-r2)**2;if(burning)hot[y*FW+x]=1;if((e.attr[i]&TM)===T_MOLTEN_STEEL)liquid[y*FW+x]+=(1-r2)**2;}
       }
     }if(!any)return;
     const img=this.img.data;
     for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const k=y*FW+x;if(field[k]<.27||e.isWall((x+.5)/S,(y+.5)/S))continue;
       const top=y===0||field[k-FW]<.27,bottom=y===FH-1||field[k+FW]<.27;
-      const molten=liquid[k]>field[k]*.5;const c=molten?(top?[255,247,179]:bottom?[240,130,6]:field[k]<1?[255,222,64]:[255,191,20]):top?[199,212,230]:bottom?[64,74,92]:field[k]<1?[145,158,179]:[110,122,143];const o=k*4;img[o]=c[0];img[o+1]=c[1];img[o+2]=c[2];img[o+3]=255;
+      const molten=liquid[k]>field[k]*.5;const c=molten?(top?[255,247,179]:bottom?[240,130,6]:field[k]<1?[255,222,64]:[255,191,20]):hot[k]?(top?[255,97,59]:bottom?[102,9,6]:field[k]<1?[242,56,26]:[209,31,14]):top?[199,212,230]:bottom?[64,74,92]:field[k]<1?[145,158,179]:[110,122,143];const o=k*4;img[o]=c[0];img[o+1]=c[1];img[o+2]=c[2];img[o+3]=255;
     }
   }
   blit(smooth) {
