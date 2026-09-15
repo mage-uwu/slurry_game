@@ -89,7 +89,7 @@ This exercises repeat visits, concurrent increments, malformed requests, static 
 
 ## Public project showcase
 
-Use **Character** to name the player, **Save project** to publish the current world, and **Showcase** to browse previews sorted by newest or most liked. **Load** replaces the current world after confirmation and opens it paused. **Fork** loads a copy, keeps your character name, and credits the original when you publish. The original is never overwritten. A successful new save, including a published fork, consumes one daily slot; browsing, loading, and editing locally do not.
+Use **Save project** to enter a project name and character name, and **Showcase** to browse previews sorted by newest or most liked. **Load** replaces the current world after confirmation and opens it paused. Edit the loaded world and save it under your own character name to publish a new version. The original project is always credited and never overwritten. A successful new save, including a published fork, consumes one daily slot; browsing, loading, and editing locally do not.
 
 - Four new projects per anonymous browser profile per UTC calendar day. The server also applies a four-save daily network cap to deter cookie-reset spam. People sharing a public IP share that additional cap. This is an anonymous sandbox, not verified accounts: different browsers/devices are separate profiles, and IP rotation is not prevented.
 - Profiles use random server-issued secrets in Secure, HttpOnly, SameSite cookies. Editing local storage cannot change the quota. Network keys are salted hashes; raw IP addresses are not stored. Short-lived rate-limit records expire automatically. There is no sign-in, recovery, or cross-device profile synchronization.
