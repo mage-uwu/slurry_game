@@ -121,7 +121,7 @@ Mercury rendering uses its stored temperature in Pixel, Smooth and Dots views on
 
 ## Steel
 
-**Steel** is a movable, heavy solid made from a triangulated lattice of particles. Paint it from the element palette, push or drop it, and use the eraser to cut it. Eight neighbor bonds keep their original lengths without plastic creep. Reciprocal bond corrections and 32 extra constraint iterations make steel much more rigid than Jello while letting the piece translate and rotate. It supports the player, appears metallic gray in all views, and its material and bonds survive public project saves/loads.
+**Steel** is a movable, heavy solid made from a triangulated lattice of particles. Paint it from the element palette, push or drop it, and use the eraser to cut it. Eight neighbor bonds keep their original lengths without plastic creep. Reciprocal bond corrections and 128 extra constraint iterations make steel much more rigid than Jello while letting the piece translate and rotate. It supports the player, uses a continuous pixel-art metal surface with stepped highlights and dark lower edges in all views, and its material and bonds survive public project saves/loads.
 
 Steel is a stiff particle approximation rather than an exact rigid-body solver. Very large, thin structures can flex, and extreme separation can break links. Adjacent compatible steel particles can bond together. Painting fills empty cells on a half-unit grid so new pieces have diagonal bracing. GPU constraint passes are enabled only after steel is painted or loaded, and disabled by clearing the world.
 
