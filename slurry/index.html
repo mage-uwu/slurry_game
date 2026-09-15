@@ -82,6 +82,7 @@
   .cell[data-t="fire"] .sw { background: linear-gradient(180deg, #ffe7a6, #ff7a1f 55%, #b3200a); }
   .cell[data-t="lava"]   { color: var(--lava); }
   .cell[data-t="lava"] .sw { background: linear-gradient(180deg, #ffd06a, #ff6a2a 60%, #6d2109); }
+  .cell[data-t="steel"] { color: #a8b3c2; }
   .cell[data-t="jello"]  { color: var(--jello); }
   .cell[data-t="sand"]   { color: var(--sand); }
   .cell[data-t="powder"] { color: var(--powder); }
@@ -142,6 +143,7 @@
       <button class="cell" id="t-mud"    data-t="mud"><span class="sw"></span>Mud</button>
       <button class="cell" id="t-meltdown" data-t="meltdown" title="Eternally hot, ultra-heavy gel. Melts stone and mutates life. Explosion-driven compression can trigger a 10,000× nitro blast with vast reach and intense heat across most of the world. More detonating Meltdown adds force and heat; direct destruction remains minor."><span class="sw"></span>Meltdown</button>
       <button class="cell" id="t-lava"   data-t="lava"><span class="sw"></span>Lava</button>
+      <button class="cell" id="t-steel" data-t="steel" title="Very rigid bonded steel. Keeps its shape under load."><span class="sw"></span>Steel</button>
       <button class="cell" id="t-jello"  data-t="jello"><span class="sw"></span>Jello</button>
       <button class="cell" id="t-life"   data-t="life"><span class="sw"></span>Life</button>
       <button class="cell" id="t-sand"   data-t="sand"><span class="sw"></span>Sand</button>
@@ -188,7 +190,7 @@
 const TM = 31;   // type mask: five bits, so the table has room past gravel and steam
 const T_DEAD = 0, T_WATER = 1, T_OIL = 2, T_GRAVEL = 3, T_FIRE = 4, T_NITRO = 5, T_JELLO = 6, T_LAVA = 7,
       T_SAND = 8, T_POWDER = 9, T_MERC = 10, T_DIRT = 11, T_MUD = 12, T_SNOW = 13, T_ICE = 14, T_STEAM = 15,
-      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18, T_ACID = 19, T_SEED = 20, T_MERC_VAPOR = 21;
+      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18, T_ACID = 19, T_SEED = 20, T_MERC_VAPOR = 21, T_STEEL = 22;
 // Fictional material tuning. Heat uses the existing unit-radius neighbor stencil.
 const MELTDOWN_BLAST = 10000.0, MELTDOWN_PRESSURE = 0.35, MELTDOWN_CHANCE = 0.02;
 const MELTDOWN_REACH = 0.95, MELTDOWN_THERMAL = 24.0;
@@ -326,7 +328,10 @@ for(const v of [[0.8,.12,.04,.2],[0.35,.06,0,.4]]){MASS.push(v[0]);SIGMA.push(v[
 // Vapor retains the mass of its liquid parcel; it disperses, but is denser than air.
 MASS.push(6);SIGMA.push(0);XSPH.push(0);WALLFRIC.push(0);
 GRAIN.push(-.2);MU_S.push(.985);MU_K.push(0);COH.push(0);TENS.push(0);
-const isGel = t => t === T_JELLO || t === T_MELTDOWN;
+MASS.push(8);SIGMA.push(.5);XSPH.push(.12);WALLFRIC.push(.8);
+GRAIN.push(0);MU_S.push(0);MU_K.push(0);COH.push(0);TENS.push(0);
+const STEEL_ITERS=32;
+const isGel = t => t === T_JELLO || t === T_MELTDOWN || t === T_STEEL;
 const particleMass = a => ((a & A_FROZEN) && ((a & TM) === T_LIFE || (a & TM) === T_CARGO) ? 50 : MASS[a & TM]) * ((a & TM) === T_CARGO ? Math.max(0.12, cargoFraction(a)) : 1);
 const isFluid = t => t === 1 || t === 2 || t === 5 || t === 7 || t === 10 || t === 12 || t === 16 || t === 17;
 const isGran = t => t === 3 || t === 8 || t === 9 || t === 11 || t === 13 || t === 14;
@@ -448,7 +453,7 @@ class Engine {
         cx = cx < 0 ? 0 : cx >= GW ? GW - 1 : cx; cy = cy < 0 ? 0 : cy >= GH ? GH - 1 : cy;
         c = cy * GW + cx;
         const t = a & TM;
-        let active = isMercury(t) || t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_LIFE || t === T_CARGO || t === T_ACID || t === T_SEED || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
+        let active = t===T_STEEL || isMercury(t) || t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_LIFE || t === T_CARGO || t === T_ACID || t === T_SEED || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
         if (!active) {
           if (recheck) {   // settled = small *net* drift over the window; jitter cancels itself out
             const d = Math.hypot(px[i] - this.anchor[i * 2], py[i] - this.anchor[i * 2 + 1]);
@@ -840,9 +845,9 @@ class Engine {
           if (d2 < 1e-12) continue;
           const r = Math.sqrt(d2); rx /= r; ry /= r;
           const wgt = Math.min(1, P.bondOmega / Math.max(nbi, bondCount(this.pid[j]), 1));
-          const stiffness = li_ ? 0.90 : ti === T_MELTDOWN ? 0.70 : P.jelloK;
+          const stiffness = li_ ? 0.90 : ti === T_STEEL ? 1 : ti === T_MELTDOWN ? 0.70 : P.jelloK;
           let rest = bondLen(b);
-          if (li_ || ti === T_MELTDOWN) {
+          if (li_ || ti === T_MELTDOWN || ti===T_STEEL) {
             // Both ends agree: gel shape forces must not propel the whole body.
             let reciprocal = BOND_EMPTY;
             const myId = this.pid[i] & PID_MASK;
@@ -885,7 +890,7 @@ class Engine {
       if ((!life && !isGel(ti)) || this.rho[i] < 0) continue;
       const skin = !life || this.wet[i] * this.wet[i] + this.react[i] * this.react[i] > 0.42 * 0.42;
       if (life && !skin && bondCount(pid[i]) === 0) continue;
-      const strain = life ? genome(attr[i]) : 0, rupture = life ? 1.5 * membraneStrength(attr[i]) : ti === T_MELTDOWN ? 1.1 : P.bondBreak;
+      const strain = life ? genome(attr[i]) : 0, rupture = life ? 1.5 * membraneStrength(attr[i]) : ti === T_STEEL ? 4 : ti === T_MELTDOWN ? 1.1 : P.bondBreak;
       const base = i * NB, x = px[i], y = py[i];
       let free = 0;
       for (let k = 0; k < NB; k++) {
@@ -897,7 +902,7 @@ class Engine {
         let L = bondLen(b);
         if (r > L + rupture) { bonds[base + k] = BOND_EMPTY; free++; continue; }
         const d = r - L;
-        if (!life && Math.abs(d) > P.bondYield) bonds[base + k] = mkBond(id, Math.min(P.bondLmax, L + P.bondCreep * (ti === T_MELTDOWN ? 0.25 : 1) * (d - Math.sign(d) * P.bondYield)));
+        if (!life && ti!==T_STEEL && Math.abs(d) > P.bondYield) bonds[base + k] = mkBond(id, Math.min(P.bondLmax, L + P.bondCreep * (ti === T_MELTDOWN ? 0.25 : 1) * (d - Math.sign(d) * P.bondYield)));
       }
       if (free === 0 || !skin) { pid[i] = (pid[i] & (PID_MASK | LIFE_SURF_MASK)) | ((NB - free) << 24); continue; }
       const cx = Math.floor(x), cy = Math.floor(y);
@@ -947,6 +952,24 @@ class Engine {
       this.fx[i] = x + sx * k; this.fy[i] = y + sy * k; this.ccx[i] += sx * k; this.ccy[i] += sy * k;
     }
     [this.nx, this.fx] = [this.fx, this.nx]; [this.ny, this.fy] = [this.fy, this.ny];
+  }
+  steelProject() {
+    const ids=[];for(let i=0;i<this.n;i++)if((this.attr[i]&TM)===T_STEEL)ids.push(i);
+    for(let it=0;it<STEEL_ITERS;it++){
+      for(const i of ids){const x=this.nx[i],y=this.ny[i];let dx=0,dy=0;
+        for(let k=0;k<NB;k++){const b=this.bonds[i*NB+k];if(b===BOND_EMPTY)continue;const id=bondId(b),j=this.idx[id];
+          if(j>=this.n||(this.pid[j]&PID_MASK)!==id||(this.attr[j]&TM)!==T_STEEL)continue;
+          let back=BOND_EMPTY;for(let q=0;q<NB;q++){const bb=this.bonds[j*NB+q];if(bb!==BOND_EMPTY&&bondId(bb)===(this.pid[i]&PID_MASK)){back=bb;break;}}if(back===BOND_EMPTY)continue;
+          const rx=this.nx[j]-x,ry=this.ny[j]-y,r=Math.hypot(rx,ry);if(r<1e-9)continue;
+          const w=.9/Math.max(1,bondCount(this.pid[i]),bondCount(this.pid[j]));const c=(r-(bondLen(b)+bondLen(back))*.5)*w/r;
+          dx+=rx*c;dy+=ry*c;
+        }
+        let xx=x+dx,yy=y+dy;if(this.isWall(xx,yy)){if(!this.isWall(x,yy))xx=x;else if(!this.isWall(xx,y))yy=y;else{xx=x;yy=y;}}
+        if(this.edge){xx=Math.max(.001,Math.min(this.W-.001,xx));yy=Math.max(.001,Math.min(this.H-.001,yy));}
+        this.fx[i]=xx;this.fy[i]=yy;
+      }
+      for(const i of ids){this.nx[i]=this.fx[i];this.ny[i]=this.fy[i];}
+    }
   }
   friction() { // gravel-only PBD friction, using post-contact displacements (nx) and pre-contact penetration (px)
     const { n, px, py, qx, qy, nx, ny, attr, GW, GH, cellStart: cs, P } = this;
@@ -1257,7 +1280,7 @@ class Engine {
       this.px[i] = x + vx; this.py[i] = y + vy;
     }
   }
-  step(tool) { this.lifeClock++; this.blastIn = this.blastOut; this.blastOut = []; this.blastSeen += this.blastIn.length / 2; this.sort(); this.mercuryThermal(); this.wakePass(tool); this.density(); this.senseFood(); this.bondPass(); this.relax(); for (let k = 0; k < this.P.citers; k++) this.contacts(); this.friction(); this.biology(); this.finalize(tool); this.rareStep(); }
+  step(tool) { this.lifeClock++; this.blastIn = this.blastOut; this.blastOut = []; this.blastSeen += this.blastIn.length / 2; this.sort(); this.mercuryThermal(); this.wakePass(tool); this.density(); this.senseFood(); this.bondPass(); this.relax(); for (let k = 0; k < this.P.citers; k++) this.contacts(); this.friction(); this.steelProject(); this.biology(); this.finalize(tool); this.rareStep(); }
 }
 
 // ---------- anchored machines and clocked circuits ----------
@@ -1400,7 +1423,7 @@ class Stickman {
     let x=this.x,y=this.y;
     if(!this.blocked(x+this.vx,y,wall))x+=this.vx;else this.vx=0;
     if(!this.blocked(x,y+this.vy,wall))y+=this.vy;else{this.ground=this.vy>=0;this.vy=0;}
-    for(const j of near){const a=e.attr[j],t=a&TM;if(!isGran(t)&&!(a&A_FROZEN))continue;
+    for(const j of near){const a=e.attr[j],t=a&TM;if(!isGran(t)&&t!==T_STEEL&&!(a&A_FROZEN))continue;
       const dx=x-e.qx[j],dy=y-2.1-e.qy[j],ox=1.15-Math.abs(dx),oy=2.4-Math.abs(dy);
       if(ox<=0||oy<=0)continue;
       if(oy<ox){const d=(dy>=0?1:-1)*Math.min(oy,.25);if(!this.blocked(x,y+d,wall))y+=d;if(d<0){this.ground=true;this.vy=Math.min(0,this.vy);}else this.vy=Math.max(0,this.vy);}
@@ -1537,7 +1560,7 @@ const MELTDOWN_HEAT = ${MELTDOWN_HEAT};
 const MELTDOWN_MELT = ${MELTDOWN_MELT};
 const MELTDOWN_MUTATE = ${MELTDOWN_MUTATE};
 const MELTDOWN_LIFE_CHANCE = ${MELTDOWN_LIFE_CHANCE};
-fn isGel(t: u32) -> bool { return t == 6u || t == 18u; }
+fn isGel(t: u32) -> bool { return t == 6u || t == 18u || t == 22u; }
 struct Params {
   gw: u32, gh: u32, nc: u32, nUpper: u32,
   ww: u32, wh: u32, edge: u32, frame: u32,
@@ -1733,7 +1756,7 @@ const SH_COUNT = HDR + /* wgsl */`
   if (t != 0u) {
     let s = st[i];
     let q = cellXY(s.xy); c = u32(q.y) * P.gw + u32(q.x);
-    var awakeNow = isMercury(t) || t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 16u || t == 17u || t == 19u || t == 20u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
+    var awakeNow = t==22u || isMercury(t) || t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 16u || t == 17u || t == 19u || t == 20u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
     if (!awakeNow) {
       let an = anchor[i];
       if (f32(P.frame) - an.z >= f32(P.window)) {   // settled = small *net* drift over the window; jitter cancels out
@@ -1848,7 +1871,7 @@ ${SPAN}
   if ((!life && !isGel(ti)) || dens[i].x < 0.0) { return; }
   let skin = !life || dot(dens[i].zw, dens[i].zw) > 0.1764;
   if (life && !skin && bondCount(pid[i]) == 0u) { return; }
-  let strain = genome(att[i]); let rupture = select(select(P.bondBreak, 1.1, ti == 18u), 1.5 * membraneStrength(att[i]), life);
+  let strain = genome(att[i]); let rupture = select(select(select(P.bondBreak, 1.1, ti == 18u),4.0,ti==22u), 1.5 * membraneStrength(att[i]), life);
   let base = i * NB;
   let p = st[i].xy;
   var free = 0u;
@@ -1861,7 +1884,7 @@ ${SPAN}
     let L = bondLen(b);
     if (r > L + rupture) { bonds[base + k] = BOND_EMPTY; free += 1u; continue; }   // torn
     let d = r - L;
-    if (!life && abs(d) > P.bondYield) { bonds[base + k] = mkBond(id, min(P.bondLmax, L + P.bondCreep * select(1.0, 0.25, ti == 18u) * (d - sign(d) * P.bondYield))); }
+    if (!life && ti!=22u && abs(d) > P.bondYield) { bonds[base + k] = mkBond(id, min(P.bondLmax, L + P.bondCreep * select(1.0, 0.25, ti == 18u) * (d - sign(d) * P.bondYield))); }
   }
   if (free > 0u && skin) {   // reach out to compatible surface particles or jello and bond to it
     let c = cellXY(p);
@@ -2381,7 +2404,7 @@ ${SPAN}
       let rl = sqrt(d2); let n = rv / rl;
       let wgt = min(1.0, P.bondOmega / f32(max(nbi, max(bondCount(pid[j]), 1u))));
       var rest = bondLen(b);
-      if (li_ || ti == 18u) {
+      if (li_ || ti == 18u || ti==22u) {
         // Both ends agree: gel shape forces must not propel the whole body.
         var reciprocal = BOND_EMPTY;
         let myId = pid[i] & ID_MASK;
@@ -2393,7 +2416,7 @@ ${SPAN}
         rest = 0.5 * (rest + bondLen(reciprocal));
         if (li_ && ((att[i] | att[j]) & A_FROZEN) == 0u) { rest = membraneRest(rest, gme, (x + sj.xy) * 0.5, n, navHeading(i) + navHeading(j)); }
       }
-      dx += n * (select(select(P.jelloK, 0.70, ti == 18u), 0.90, li_) * (rl - rest) * 0.5 * wgt);
+      dx += n * (select(select(select(P.jelloK, 0.70, ti == 18u),1.0,ti==22u), 0.90, li_) * (rl - rest) * 0.5 * wgt);
       let u = dot(v - (sj.xy - sj.zw), n);
       dx -= n * (P.bondDamp * u * 0.5 * wgt);
     }
@@ -2691,7 +2714,7 @@ var<workgroup> ltot: u32;
       let rl = sqrt(d2); let n = rv / rl;
       let wgt = min(1.0, P.bondOmega / f32(max(nbi, max(bondCount(pid[j]), 1u))));
       var rest = bondLen(b);
-      if (li_ || ti == 18u) {
+      if (li_ || ti == 18u || ti==22u) {
         // Both ends agree: gel shape forces must not propel the whole body.
         var reciprocal = BOND_EMPTY;
         let myId = pid[i] & ID_MASK;
@@ -2703,7 +2726,7 @@ var<workgroup> ltot: u32;
         rest = 0.5 * (rest + bondLen(reciprocal));
         if (li_ && ((att[i] | att[j]) & A_FROZEN) == 0u) { rest = membraneRest(rest, gme, (x + sj.xy) * 0.5, n, navHeading(i) + navHeading(j)); }
       }
-      dx += n * (select(select(P.jelloK, 0.70, ti == 18u), 0.90, li_) * (rl - rest) * 0.5 * wgt);
+      dx += n * (select(select(select(P.jelloK, 0.70, ti == 18u),1.0,ti==22u), 0.90, li_) * (rl - rest) * 0.5 * wgt);
       let u = dot(v - (sj.xy - sj.zw), n);
       dx -= n * (P.bondDamp * u * 0.5 * wgt);
     }
@@ -2758,6 +2781,27 @@ ${SPAN}
   }
   var k = 0.0; if (cnt > 0.0) { k = min(1.0, P.cOmega / cnt); }
   Xo[i] = vec4f(x + s * k, xi.zw + s * k);
+}`;
+// Jacobi steel projection: reciprocal fixed-length links preserve momentum and resist shear.
+const SH_STEEL = HDR + /* wgsl */`
+@group(0) @binding(1) var<storage,read> att:array<u32>;
+@group(0) @binding(2) var<storage,read> pid:array<u32>;
+@group(0) @binding(3) var<storage,read> bonds:array<u32>;
+@group(0) @binding(4) var<storage,read> idx:array<u32>;
+@group(0) @binding(5) var<storage,read> starts:array<u32>;
+@group(0) @binding(6) var<storage,read> Xi:array<vec4f>;
+@group(0) @binding(7) var<storage,read_write> Xo:array<vec4f>;
+@group(0) @binding(8) var<storage,read> walls:array<u32>;
+fn steelWall(p:vec2f)->bool{let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return P.edge!=0u;}return walls[u32(c.y)*P.ww+u32(c.x)]!=0u;}
+@compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
+ let i=gid.x;let n=starts[P.nc];if(i>=n){return;}let xi=Xi[i];Xo[i]=xi;if((att[i]&TM)!=22u){return;}
+ var d=vec2f(0.0);
+ for(var k=0u;k<NB;k++){let b=bonds[i*NB+k];if(b==BOND_EMPTY){continue;}let id=bondId(b);let j=idx[id];if(j>=n||(pid[j]&ID_MASK)!=id||(att[j]&TM)!=22u){continue;}
+  var back=BOND_EMPTY;for(var q=0u;q<NB;q++){let bb=bonds[j*NB+q];if(bb!=BOND_EMPTY&&bondId(bb)==(pid[i]&ID_MASK)){back=bb;break;}}if(back==BOND_EMPTY){continue;}
+  let rv=Xi[j].xy-xi.xy;let r=length(rv);if(r<1e-9){continue;}let w=0.9/f32(max(1u,max(bondCount(pid[i]),bondCount(pid[j]))));d+=rv*((r-(bondLen(b)+bondLen(back))*0.5)*w/r);
+ }
+ var p=xi.xy+d;if(steelWall(p)){if(!steelWall(vec2f(xi.x,p.y))){p.x=xi.x;}else if(!steelWall(vec2f(p.x,xi.y))){p.y=xi.y;}else{p=xi.xy;}}
+ if(P.edge!=0u){p=clamp(p,vec2f(0.001),vec2f(f32(P.gw),f32(P.gh))-0.001);}Xo[i]=vec4f(p,xi.zw);
 }`;
 const SH_FRICTION = HDR + /* wgsl */`
 @group(0) @binding(1) var<storage, read> st: array<vec4f>;
@@ -3164,7 +3208,7 @@ const SH_PIX = RHDR + /* wgsl */`
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x; if (i >= u32(R.r3)) { return; }
   let a = att[i]; let t = a & TM;
-  if (t == 0u || t == 16u || t == 17u || t == 21u) { return; }
+  if (t == 0u || t == 16u || t == 17u || t == 21u || t == 22u) { return; }
   let s = st[i];
   let grid = vec2f(R.pxW, R.pxH);
   let scale = grid / vec2f(R.W, R.H);
@@ -3622,9 +3666,9 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   var o: VO;
   let a = att[ii]; let t = a & TM;
   o.t = select(t, (a >> 24u) & 31u, t == 17u); o.uv = q[vi]; o.seed = f32((a >> 8u) & 255u) / 255.0;
-  let show = select(t==21u || t==19u || t==20u || (t == 3u && R.mode == 1u) || (R.mode == 2u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
+  let show = select(t==22u || t==21u || t==19u || t==20u || (t == 3u && R.mode == 1u) || (R.mode == 2u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
   if (!show) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; }
-  let rad = select(select(R.drad, R.grad, t == 3u), 0.06 + 0.32 * sqrt(f32((a >> 16u) & 255u) / 255.0), t == 17u);
+  let rad = select(select(select(R.drad,0.34,t==22u), R.grad, t == 3u), 0.06 + 0.32 * sqrt(f32((a >> 16u) & 255u) / 255.0), t == 17u);
   let p = st[ii].zw + q[vi] * rad;
   o.pos = vec4f(p.x / R.W * 2.0 - 1.0, 1.0 - p.y / R.H * 2.0, 0.0, 1.0);
   return o;
@@ -3654,6 +3698,7 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   else if (i.t == 2u) { col = vec3f(0.88, 0.60, 0.18); }
   else if (i.t == 5u) { col = vec3f(0.72, 0.93, 0.22); }
   else if (i.t == 6u) { col = vec3f(0.92, 0.25, 0.44); }
+  else if (i.t == 22u) { col=vec3f(.57,.62,.69)*(1.1-.25*r*r); }
   else if (i.t == 21u) { col=vec3f(0.47,0.51,0.56); }
   else if (i.t == 10u) { col = vec3f(0.80, 0.84, 0.90); }
   else if (i.t == 12u) { col = vec3f(0.36, 0.26, 0.16); }
@@ -3927,7 +3972,7 @@ fn blocked(p:vec2f)->bool{for(var y=p.y-4.2;y<=p.y+0.001;y+=0.3){if(wall(vec2f(p
  if(!blocked(p+vec2f(v.x,0.0))){p.x+=v.x;}else{v.x=0.0;}
  if(!blocked(p+vec2f(0.0,v.y))){p.y+=v.y;}else{ground=v.y>=0.0;v.y=0.0;}
  if(P.nUpper>0u){for(var y=lo.y;y<=hi.y;y++){for(var j=starts[u32(y)*P.gw+u32(lo.x)];j<starts[u32(y)*P.gw+u32(hi.x)+1u];j++){
-  let a=att[j];if(lethalContact(a,st[j].zw,p)){die();return;}if(!isGran(a&TM)&&(a&A_FROZEN)==0u){continue;}let d=p-vec2f(0.0,2.1)-st[j].zw;let overlap=vec2f(1.15,2.4)-abs(d);if(any(overlap<=vec2f(0.0))){continue;}
+  let a=att[j];if(lethalContact(a,st[j].zw,p)){die();return;}if(!isGran(a&TM)&&(a&TM)!=22u&&(a&A_FROZEN)==0u){continue;}let d=p-vec2f(0.0,2.1)-st[j].zw;let overlap=vec2f(1.15,2.4)-abs(d);if(any(overlap<=vec2f(0.0))){continue;}
   if(overlap.y<overlap.x){let shift=select(-1.0,1.0,d.y>=0.0)*min(overlap.y,0.25);if(!blocked(p+vec2f(0.0,shift))){p.y+=shift;}if(shift<0.0){ground=true;v.y=min(0.0,v.y);}else{v.y=max(0.0,v.y);}}
   else{let shift=select(-1.0,1.0,d.x>=0.0)*min(overlap.x,0.15);if(!blocked(p+vec2f(shift,0.0))){p.x+=shift;}v.x*=0.8;}
  }}}
@@ -4040,11 +4085,11 @@ const MAXP_GPU = 1 << 17, MAXP_CPU = 12000;
 
 const PEN_R = [0.7, 1.3, 2.2, 3.4, 5, 7.2, 10];
 //                -  wat oil grv fir nit jel lav san pow mer dir mud sno ice stm
-const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4];   // spawn fill target per h x h cell; cargo is only ingested
+const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4, 0, 0, 0, 4];   // spawn fill target per h x h cell; cargo is only ingested
 const GRAV = [[0, 1, '↓'], [0, 0, '0'], [0, -1, '↑']];
 const SPEEDS = [[0.5, '½'], [1, '1x'], [2, '2x']];
-const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player', 'light'];
-const TYPE_OF = { water: T_WATER, oil: T_OIL, gravel: T_GRAVEL, fire: T_FIRE, nitro: T_NITRO, jello: T_JELLO, lava: T_LAVA,
+const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player', 'light', 'steel'];
+const TYPE_OF = { steel:T_STEEL, water: T_WATER, oil: T_OIL, gravel: T_GRAVEL, fire: T_FIRE, nitro: T_NITRO, jello: T_JELLO, lava: T_LAVA,
                   sand: T_SAND, powder: T_POWDER, merc: T_MERC, dirt: T_DIRT, mud: T_MUD, snow: T_SNOW, ice: T_ICE, steam: T_STEAM, life: T_LIFE, meltdown: T_MELTDOWN };
 const PRM = makeParams();
 const machines = new MachineSystem(W,H);
@@ -4161,6 +4206,7 @@ class GpuSim {
     this.rareMeta=B(ID_SPACE*32,U.STORAGE|U.COPY_DST);this.rareHeads=B(RARE_HEAD_WORDS*4,U.STORAGE|U.COPY_DST|U.INDIRECT);this.rareNext=B(M*4,U.STORAGE);this.rareSnap=B(M*32,U.STORAGE);this.rareEmits=B(4112,U.STORAGE|U.COPY_DST|U.COPY_SRC);
     this.rareReads=Array.from({length:3},()=>({buf:B(4112,U.COPY_DST|U.MAP_READ),busy:false}));
     this.pUnknownBody=cp(SH_UNKNOWN_BODY,'unknown-body');this.pRareList=cp(SH_RARE_LIST,'rare-list');this.pRareLocal=cp(SH_RARE_LOCAL,'rare-local');this.pRareBody=cp(SH_RARE_BODY,'rare-body');
+    this.pSteel=cp(SH_STEEL,'steel');
     this.pThermal=cp(SH_MERCURY_THERMAL,'mercury-thermal');
     this.pPlayer=cp(SH_PLAYER,'player');this.pPlayerPush=cp(SH_PLAYER_PUSH,'player-push');
     this.pCues = cp(SH_CUES, 'food-cues'); this.pSense = cp(SH_SENSE, 'organelle-sense');
@@ -4193,6 +4239,7 @@ class GpuSim {
     const bg = (pipe, res) => device.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: res.map((r, i) => ({ binding: i, resource: r instanceof GPUBuffer ? { buffer: r } : r })) });
     const u = this.uni, st = this.st, at = this.at, X = this.X;
     this.bg = [0, 1].map(p => { const I = p, O = 1 - p; return {
+      steel:[0,1].map(d=>bg(this.pSteel,[u,at[O],this.pid[O],this.bond[O],this.idxBuf,this.starts,X[d],X[1-d],this.wallBuf])),
       thermal:bg(this.pThermal,[u,st[O],at[O],this.starts,this.thermalAt]),
       unknownBody:bg(this.pUnknownBody,[u,st[O],this.rareSnap,this.rareHeads,this.wallBuf]),
       rareList:bg(this.pRareList,[u,st[O],at[I],this.pid[O],this.rareMeta,this.rareHeads,this.rareNext,this.rareSnap,this.rareEmits]),
@@ -4244,6 +4291,7 @@ class GpuSim {
   }
   add(x, y, t, vx = 0, vy = 0, gene = 0) {
     if (this.nUpper + this.pendN >= this.maxP) return false;
+    if(t===T_STEEL)this.hasSteel=true;
     const k = this.pendN++;
     this.pendSt[k * 4] = x + vx; this.pendSt[k * 4 + 1] = y + vy; this.pendSt[k * 4 + 2] = x; this.pendSt[k * 4 + 3] = y;
     this.pendAt[k] = t === T_LIFE
@@ -4254,7 +4302,7 @@ class GpuSim {
     this.pendBond.fill(BOND_EMPTY, k * NB, k * NB + NB);
     return true;
   }
-  clear() { this.nUpper = 0; this.alive = 0; this.pendN = 0; this.wakeAll = 4;this.bw=0;for(const b of this.blast)this.device.queue.writeBuffer(b,0,new Uint32Array(2)); }
+  clear() { this.hasSteel=false; this.nUpper = 0; this.alive = 0; this.pendN = 0; this.wakeAll = 4;this.bw=0;for(const b of this.blast)this.device.queue.writeBuffer(b,0,new Uint32Array(2)); }
   get count() { return this.alive; }
   get room() { return this.maxP - this.nUpper - this.pendN; }
   wake() { this.wakeAll = 4; }
@@ -4378,6 +4426,7 @@ class GpuSim {
         pass.setPipeline(this.pContact);
         for (let k = 0; k < P.citers; k++) { pass.setBindGroup(0, g.contact[x]); pass.dispatchWorkgroups(wg); x = 1 - x; }
         pass.setPipeline(this.pFric); pass.setBindGroup(0, g.fric[x]); pass.dispatchWorkgroups(wg); x = 1 - x;
+        if(this.hasSteel){pass.setPipeline(this.pSteel);for(let k=0;k<STEEL_ITERS;k++){pass.setBindGroup(0,g.steel[x]);pass.dispatchWorkgroups(wg);x=1-x;}}
         pass.setPipeline(this.pFinal); pass.setBindGroup(0, g.final[x][this.bw]); pass.dispatchWorkgroups(wg);
         this.bw = 1 - this.bw;
         pass.setPipeline(this.pRareList);pass.setBindGroup(0,g.rareList);pass.dispatchWorkgroups(wg);
@@ -4582,6 +4631,7 @@ class CpuSim {
       else if (t === 13) { const sh = ((((a >> 8) & 255) / 255) * 7.31) % 1;
         c = sh > 0.5 ? [237, 242, 252] : [214, 224, 245]; }
       else if (t === 14) c = [140, 209, 247];
+      else if(t===T_STEEL)c=[145,158,176];
       else if(t===T_MERC_VAPOR)c=[120,130,144];
       else if (t === 15) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.3 ? [230, 237, 245] : u < 0.6 ? [189, 199, 212] : [140, 148, 161]; }
@@ -4663,7 +4713,7 @@ class CpuSim {
     for (let i = 0; i < e.n; i++) {
       const a = e.attr[i], t = a & TM;
       const gran = t === 3 || t === 8 || t === 9 || t === 11 || t === 13 || t === 14;
-      if (!gran && t !== T_MERC_VAPOR && t !== 4 && t !== 15 && !(t === 2 && (a & A_LIT))) continue;
+      if (!gran && t !== T_STEEL && t !== T_MERC_VAPOR && t !== 4 && t !== 15 && !(t === 2 && (a & A_LIT))) continue;
       const cx = e.qx[i] * S, cy = e.qy[i] * S;
       let c, rr = 1.1;
       if (gran) { const sh = (((a >> 8) & 255) / 255 * 7.31) % 1, gv = (107 + 87 * sh) | 0;
@@ -4673,6 +4723,7 @@ class CpuSim {
           : t === 11 ? [(gv * 1.05) | 0, (gv * 0.74) | 0, (gv * 0.47) | 0]
           : t === 13 ? [(224 + 26 * sh) | 0, (232 + 23 * sh) | 0, 250]
           : [140, 209, 247]; }
+      else if(t===T_STEEL)c=[145,158,176];
       else if(t===T_MERC_VAPOR)c=[120,130,144];
       else if (t === 15) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.3 ? [230, 237, 245] : u < 0.6 ? [189, 199, 212] : [140, 148, 161]; }
@@ -4822,6 +4873,13 @@ function spawnParticle(x, y, t, vx, vy, gene) {
 }
 function stampBrush(cx, cy, R, t, vx, vy, gene) {
   const cap = CAP[t];
+  if(t===T_STEEL){
+    for(let gy=Math.max(0,Math.floor(cy-R));gy<=Math.min(GH-1,Math.floor(cy+R));gy++)for(let gx=Math.max(0,Math.floor(cx-R));gx<=Math.min(GW-1,Math.floor(cx+R));gx++){
+      const cell=gy*GW+gx;if(occ.base[cell]+occ.recent[cell]>0)continue;
+      if((gx+.5-cx)**2+(gy+.5-cy)**2>R*R)continue;
+      for(const dy of [.25,.75])for(const dx of [.25,.75])spawnParticle(gx+dx,gy+dy,t,0,0,gene);
+    }return;
+  }
   for (let gy = Math.max(0, Math.floor(cy - R)); gy <= Math.min(GH - 1, Math.floor(cy + R)); gy++)
     for (let gx = Math.max(0, Math.floor(cx - R)); gx <= Math.min(GW - 1, Math.floor(cx + R)); gx++) {
       const nx = Math.max(gx, Math.min(cx, gx + 1)), ny = Math.max(gy, Math.min(cy, gy + 1));

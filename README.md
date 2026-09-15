@@ -118,3 +118,11 @@ This is a simplified sandbox model: heat transfer rates are tuned for gameplay, 
 `npm test` includes mercury thermal/phase and saved-state checks. `node tests/mercury.test.cjs` checks cold mercury falling, settling and sinking; `python3 tests/mercury-gpu.test.py` compiles the affected WGSL kernels and executes native GPU heat transfer and phase-change checks.
 
 Mercury rendering uses its stored temperature in Pixel, Smooth and Dots views on both CPU and GPU. Liquid stays silver and ordinary vapor stays gray; the 1-atm liquid boils before it can visibly incandesce. Above 525°C the renderer adds a gradually brighter dull-red → orange → warm-white halo. This is an exaggerated thermal-color cue for hot vapor, not a calculation of mercury's line spectrum, emissivity or optical depth. No electrical-discharge/plasma color is implied. The palette follows the general [thermal radiation color progression](https://lco.global/spacebook/light/black-body-radiation/); real ordinary mercury vapor is colorless.
+
+## Steel
+
+**Steel** is a movable, heavy solid made from a triangulated lattice of particles. Paint it from the element palette, push or drop it, and use the eraser to cut it. Eight neighbor bonds keep their original lengths without plastic creep. Reciprocal bond corrections and 32 extra constraint iterations make steel much more rigid than Jello while letting the piece translate and rotate. It supports the player, appears metallic gray in all views, and its material and bonds survive public project saves/loads.
+
+Steel is a stiff particle approximation rather than an exact rigid-body solver. Very large, thin structures can flex, and extreme separation can break links. Adjacent compatible steel particles can bond together. Painting fills empty cells on a half-unit grid so new pieces have diagonal bracing. GPU constraint passes are enabled only after steel is painted or loaded, and disabled by clearing the world.
+
+`npm test` includes a steel floor-impact/shape-retention check, unchanged bond rest lengths under strain, erasure cleanup and snapshot validation. `python3 tests/steel-gpu.test.py` validates the affected WGSL kernels and compares the GPU's strained-block projection against the CPU implementation.
