@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess,json,numpy as np,wgpu
 page=Path(__file__).resolve().parents[1]/'slurry/index.html'
-js="""const fs=require('fs'),vm=require('vm');const s=fs.readFileSync(process.argv[1],'utf8').split('<script>')[1].split('</script>')[0],c={};vm.createContext(c);vm.runInContext(s.slice(0,s.indexOf('const TOOLS'))+';this.result={thermal:SH_MERCURY_THERMAL,density:SH_DENSITY,tiled:SH_DENSITY_T,relax:SH_RELAX,relaxT:SH_RELAX_T,final:SH_FINAL,lights:SH_MACHINES,player:SH_PLAYER,dots:SH_DOTS,parameters:makeParams()};',c);console.log(JSON.stringify(c.result));"""
+js="""const fs=require('fs'),vm=require('vm');const s=fs.readFileSync(process.argv[1],'utf8').split('<script>')[1].split('</script>')[0],c={};vm.createContext(c);vm.runInContext(s.slice(0,s.indexOf('const TOOLS'))+';this.result={thermal:SH_MERCURY_THERMAL,density:SH_DENSITY,tiled:SH_DENSITY_T,relax:SH_RELAX,relaxT:SH_RELAX_T,final:SH_FINAL,lights:SH_MACHINES,player:SH_PLAYER,dots:SH_DOTS,glow:SH_FIRE,parameters:makeParams()};',c);console.log(JSON.stringify(c.result));"""
 code=json.loads(subprocess.check_output(['node','-e',js,str(page)],text=True))
 dev=wgpu.gpu.request_adapter_sync(power_preference='low-power').request_device_sync();U=wgpu.BufferUsage
 for key,shader in code.items():
@@ -43,3 +43,24 @@ b=dev.create_bind_group(layout=p.get_bind_group_layout(0),entries=[{'binding':i,
 e=dev.create_command_encoder();c=e.begin_compute_pass();c.set_pipeline(p);c.set_bind_group(0,b);c.dispatch_workgroups(1);c.end();dev.queue.submit([e.finish()]);d=np.frombuffer(dev.queue.read_buffer(dens),np.float32).reshape(-1,4)
 assert d[1,2]>0 and d[3,3]>0,d
 print('PASS native mercury diffusion, latent boiling, condensation, unchanged neighbors and heat transfer from vapor/liquid')
+
+# Render the actual glow shader offscreen: cold/liquid invisible; hot gas redder,
+# then brighter and whiter, in all three display modes. Alpha stays additive.
+shader=dev.create_shader_module(code=code['glow'])
+pipe=dev.create_render_pipeline(layout='auto',vertex={'module':shader,'entry_point':'vs'},fragment={'module':shader,'entry_point':'fs','targets':[{'format':'rgba16float'}]},primitive={'topology':'triangle-list'})
+rf=np.zeros(16,np.float32);rf[:2]=[10,10];rf[11]=1.1
+ru=buf(rf,True);rs=buf(np.array([[5,5,5,5]],np.float32));ra=buf(np.array([10],np.uint32))
+bg=dev.create_bind_group(layout=pipe.get_bind_group_layout(0),entries=[{'binding':i,'resource':{'buffer':b}}for i,b in enumerate([ru,rs,ra])])
+tex=dev.create_texture(size=(32,32,1),format='rgba16float',usage=wgpu.TextureUsage.RENDER_ATTACHMENT|wgpu.TextureUsage.COPY_SRC)
+def render(material,energy,mode):
+ rf.view(np.uint32)[4]=mode;dev.queue.write_buffer(ru,0,rf);dev.queue.write_buffer(ra,0,np.array([attr(material,energy)],np.uint32))
+ enc=dev.create_command_encoder();p=enc.begin_render_pass(color_attachments=[{'view':tex.create_view(),'resolve_target':None,'clear_value':(0,0,0,0),'load_op':'clear','store_op':'store'}]);p.set_pipeline(pipe);p.set_bind_group(0,bg);p.draw(6,1);p.end();dev.queue.submit([enc.finish()])
+ pixels=np.frombuffer(dev.queue.read_texture({'texture':tex},{'bytes_per_row':256,'rows_per_image':32},(32,32,1)),np.float16).astype(np.float32).reshape(32,32,4)
+ return pixels.sum(axis=(0,1))
+for mode in range(3):
+ assert not render(10,40,mode).any()
+ assert not render(21,342.125,mode).any()
+ red=render(21,342.138+(700-356.7)*.104,mode);white=render(21,510,mode)
+ assert red[0]>red[1]*5>red[2]>0 and red[3]==0,red
+ assert white[0]>red[0] and white[1]/white[0]>red[1]/red[0] and white[3]==0,(red,white)
+print('PASS offscreen mercury glow: no cold/boiling glow, hot red to warm white, all views, additive alpha')

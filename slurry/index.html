@@ -339,6 +339,13 @@ const HG_BOIL=356.7, HG_CP=.14, HG_VCP=.104, HG_LATENT=295, HG_EBOIL=(HG_BOIL-20
 const isMercury=t=>t===T_MERC||t===T_MERC_VAPOR;
 const mercuryEnergy=a=>((a>>>16)&4095)*.125;
 function mercuryTemp(a){const e=mercuryEnergy(a);return e<HG_EBOIL?20+e/HG_CP:e<=HG_EBOIL+HG_LATENT?HG_BOIL:HG_BOIL+(e-HG_EBOIL-HG_LATENT)/HG_VCP;}
+// Thermal-color visibility approximation; ordinary liquid mercury never reaches incandescence at 1 atm.
+function mercuryGlow(a){
+ if(!isMercury(a&TM))return [0,0,0,0];const t=mercuryTemp(a),v=Math.max(0,Math.min(1,(t-525)/900));
+ const knots=[[525,1,.025,0],[800,1,.08,.005],[1200,1,.36,.06],[2000,1,.72,.4]];
+ let k=0;while(k<2&&t>knots[k+1][0])k++;const lo=knots[k],hi=knots[k+1],f=Math.max(0,Math.min(1,(t-lo[0])/(hi[0]-lo[0])));
+ return [lo[1]+(hi[1]-lo[1])*f,lo[2]+(hi[2]-lo[2])*f,lo[3]+(hi[3]-lo[3])*f,v*v*.6];
+}
 function mercuryStore(a,e,roll){const q=Math.min(4095,Math.max(0,Math.floor(e*8+roll))),energy=q*.125;let t=a&TM;
  if(t===T_MERC&&energy>=HG_EBOIL+HG_LATENT)t=T_MERC_VAPOR;else if(t===T_MERC_VAPOR&&energy<=HG_EBOIL)t=T_MERC;
  return ((a&0xFF00)|(q<<16)|t|A_FRESH)>>>0;}
@@ -3659,11 +3666,25 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
 const SH_FIRE = RHDR + /* wgsl */`
 @group(0) @binding(1) var<storage, read> st: array<vec4f>;
 @group(0) @binding(2) var<storage, read> att: array<u32>;
-struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) u: f32, @location(2) @interpolate(flat) boom: f32 };  // boom carries 1/rs^2 for fire
+fn mercuryGlowR(a:u32)->vec4f {
+ let e=f32((a>>16u)&4095u)*0.125;var t=356.7;
+ if(e<47.138){t=20.0+e/0.14;}else if(e>342.138){t=356.7+(e-342.138)/0.104;}
+ var lo=vec4f(525.0,1.0,0.025,0.0);var hi=vec4f(800.0,1.0,0.08,0.005);
+ if(t>800.0){lo=hi;hi=vec4f(1200.0,1.0,0.36,0.06);}if(t>1200.0){lo=hi;hi=vec4f(2000.0,1.0,0.72,0.4);}
+ let col=mix(lo.yzw,hi.yzw,clamp((t-lo.x)/(hi.x-lo.x),0.0,1.0));let v=clamp((t-525.0)/900.0,0.0,1.0);
+ return vec4f(col,v*v*0.6);
+}
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) u: f32, @location(2) @interpolate(flat) boom: f32, @location(3) @interpolate(flat) hg: vec4f };  // boom carries 1/rs^2 for fire
 @vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
   var q = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
   var o: VO;
-  let a = att[ii]; o.uv = q[vi]; o.u = 1.0; o.boom = 0.0;
+  let a = att[ii]; o.uv = q[vi]; o.u = 1.0; o.boom = 0.0; o.hg=vec4f(0.0);
+  if((a&TM)==10u||(a&TM)==21u){
+    o.hg=mercuryGlowR(a);
+    if(o.hg.w<=0.0){o.pos=vec4f(2.0,2.0,0.0,1.0);return o;}
+    let p=st[ii].zw+q[vi]*R.frad*1.4;
+    o.pos=vec4f(p.x/R.W*2.0-1.0,1.0-p.y/R.H*2.0,0.0,1.0);return o;
+  }
   if (R.mode == 0u && !((a & TM) == 4u && (a & A_MEGA) != 0u)) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; } // mega flashes remain visible in pixel view
   let t = a & TM;
   let lit = t == 2u && (a & A_LIT) != 0u;
@@ -3708,6 +3729,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
   let r2 = dot(i.uv, i.uv);
   if (r2 >= 1.0) { discard; }
   let fall = (1.0 - r2) * (1.0 - r2);
+  if(i.hg.w>0.0){return vec4f(i.hg.xyz*i.hg.w*fall,0.0);}
   if (i.u <= -2.0) { return vec4f(vec3f(0.80, 1.0, 0.50) * fall * i.boom * max(0.0, 1.0 + (i.u + 2.0)), 0.0); }
   if (i.u < 0.0) { return vec4f(vec3f(0.25, 1.0, 0.04) * fall * i.boom, 0.0); }
   let u = i.u;
@@ -4751,6 +4773,17 @@ class CpuSim {
     const c = this.ctx; c.imageSmoothingEnabled = smooth;
     c.clearRect(0, 0, this.canvas.width, this.canvas.height);
     c.drawImage(this.off, 0, 0, this.canvas.width, this.canvas.height);
+    // Additive glow in every view; temperature comes from the saved enthalpy word.
+    c.save();c.globalCompositeOperation='lighter';
+    const gx=this.canvas.width/W,gy=this.canvas.height/H;
+    for(let i=0;i<this.e.n;i++){
+      const a=this.e.attr[i];if(!isMercury(a&TM))continue;const col=mercuryGlow(a);if(col[3]<=0)continue;
+      const x=this.e.qx[i]*gx,y=this.e.qy[i]*gy,r=1.54*gx,gradient=c.createRadialGradient(x,y,0,x,y,r);
+      const rgb=col.slice(0,3).map(v=>Math.round(v*255)).join(',');
+      for(const f of [0,.25,.5,.75,1])gradient.addColorStop(f,'rgba('+rgb+','+(col[3]*(1-f*f)**2)+')');
+      c.fillStyle=gradient;c.fillRect(x-r,y-r,r*2,r*2);
+    }
+    c.restore();
     this.renderLifeOverlay(); this.renderOrganelles();
     // Inclusions render above the cytoplasm in every view, keeping their source colour.
     const sx = this.canvas.width / W, sy = this.canvas.height / H;

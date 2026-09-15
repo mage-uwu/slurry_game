@@ -1,6 +1,8 @@
+// Seed stochastic thermal rounding so regression results are reproducible.
+let seed=7331;const originalRandom=Math.random;Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'..','slurry/index.html'),'utf8').split('<script>')[1].split('// ---------- WGSL ----------')[0];
-const {Engine,makeParams,mercuryStore:store,mercuryEnergy:energy,mercuryTemp:temp,lightHeat,HG_EBOIL,HG_LATENT}=new Function(source+';return {Engine,makeParams,mercuryStore,mercuryEnergy,mercuryTemp,lightHeat,HG_EBOIL,HG_LATENT};')();
+const {Engine,makeParams,mercuryStore:store,mercuryEnergy:energy,mercuryTemp:temp,lightHeat,mercuryGlow,HG_EBOIL,HG_LATENT}=new Function(source+';return {Engine,makeParams,mercuryStore,mercuryEnergy,mercuryTemp,lightHeat,mercuryGlow,HG_EBOIL,HG_LATENT};')();
 let a=store(10,HG_EBOIL+100,.5);assert.equal(a&31,10);assert.equal(temp(a),356.7);
 a=store(a,HG_EBOIL+HG_LATENT+10,.5);assert.equal(a&31,21);assert(temp(a)>356.7);
 a=store(a,HG_EBOIL+100,.5);assert.equal(a&31,21);assert.equal(temp(a),356.7);
@@ -14,4 +16,8 @@ const cooling=setup(1);cooling.attr[0]=store(21,100,.5);for(let k=0;k<15000;k++)
 let lamp=10;for(let i=0;i<500;i++)lamp=lightHeat(lamp,makeParams(),.5).attr;assert.equal(lamp&31,21);
 // Heat and the vapor material survive the existing public-project format.
 const world=require('./project-fixture.cjs')();world.attributes=globalThis.SlurryProject.encode(new Uint32Array([lamp,store(10,40,.5)]));assert.equal(globalThis.SlurryProject.validate(world).arrays.attributes[0],lamp);
+for(const e of [0,40,100,342.125])assert.equal(mercuryGlow(store(10,e,.5))[3],0,'no incandescent liquid');
+const red=mercuryGlow(store(21,342.138+(700-356.7)*.104,.5)),white=mercuryGlow(store(21,510,.5));
+assert(red[3]>0&&red[0]>red[1]*5&&red[1]>red[2]);assert(white[3]>red[3]&&white[1]>red[1]&&white[2]>red[2]);
+Math.random=originalRandom;
 console.log('PASS mercury heat uptake, diffusion, latent boiling/condensation, superheated vapor, reactions, lamps and snapshot preservation');
