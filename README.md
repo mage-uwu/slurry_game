@@ -48,6 +48,7 @@ With Node.js installed:
 ```sh
 node tests/player.test.cjs
 node tests/mercury.test.cjs
+node tests/mercury-heat.test.cjs
 node tests/rare-organelles.test.cjs
 node tests/jelly-navigation.test.cjs
 node tests/unknown.test.cjs
@@ -60,6 +61,7 @@ Optional native GPU regression checks, with Node.js, Python, NumPy and wgpu inst
 ```sh
 python3 tests/unknown-gpu.test.py
 python3 tests/lights-gpu.test.py
+python3 tests/mercury-gpu.test.py
 ```
 
 The GPU checks exercise partial workgroups, mixed ordinary/??? particles, positive and negative momentum at the full 128k particle capacity, and clearing the indirect body dispatch.
@@ -104,3 +106,13 @@ Use **Save project** to enter a project name and character name, and **Showcase*
 Run `npm ci`, then `npm run dev` for the complete application, or `npm run deploy` to deploy. A plain static server still runs the simulation and character naming, but public saves/loads need the Worker. All showcase APIs live under `/api/showcase`: `/session`, `/projects`, `/projects/:id`, and `/projects/:id/like`. Mutations require a same-origin JSON request. General requests and writes are rate limited on the server.
 
 Run `npm test` for format validation/moderation, CPU snapshot restoration, API concurrency/persistence/full-capacity checks, the DOM save/load/fork flow, and existing visitor/player/light regressions. The DOM test does not replace a real browser layout/WebGPU smoke test. `npx wrangler deploy --dry-run` checks the Worker bundle and bindings without publishing.
+
+## Mercury heat and phase changes
+
+Mercury absorbs heat from nearby fire, burning oil, lava, Meltdown and powered lamps, conducts it between mercury particles, and cools against cooler surroundings. Hot liquid and vapor can boil water, melt ice/snow and ignite combustible materials. Heating and cooling preserve the mercury parcel: vapor condenses instead of expiring like fire. Heat and phase survive project saves and loads on CPU and WebGPU.
+
+The fixed atmospheric-pressure model holds temperature near **356.7°C** while absorbing/releasing latent heat; after boiling completes, the vapor can superheat. Approximate heat capacities are 0.14 J/g/K for liquid and 0.104 J/g/K for vapor, with 295 J/g latent heat. The [Government of Canada mercury properties reference](https://www.canada.ca/en/environment-climate-change/services/pollutants/mercury-environment/about/chemical-properties.html) gives the normal boiling point and notes that mercury vapor is colorless; the game draws it gray so players can see it.
+
+This is a simplified sandbox model: heat transfer rates are tuned for gameplay, other materials retain their existing temperature/reaction rules, and the simulation does not conserve energy globally or solve pressure, freezing, sub-boiling evaporation, or metastable superheated liquid. Vapor is heavy in air and buoyant within liquids. Stored energy uses 0.125 J/g increments with stochastic rounding to retain slow cooling and conduction.
+
+`npm test` includes mercury thermal/phase and saved-state checks. `node tests/mercury.test.cjs` checks cold mercury falling, settling and sinking; `python3 tests/mercury-gpu.test.py` compiles the affected WGSL kernels and executes native GPU heat transfer and phase-change checks.
