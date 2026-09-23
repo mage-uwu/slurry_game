@@ -38,7 +38,7 @@
   function preview(arrays,s) {
     const pixels=new Uint8Array(16000);
     for(let y=0;y<100;y++)for(let x=0;x<160;x++){const k=y*160+x,w=y*2*320+x*2;if(arrays.walls[w]||arrays.walls[w+1]||arrays.walls[w+320]||arrays.walls[w+321])pixels[k]=31;else if(arrays.wires[k])pixels[k]=21;}
-    for(let i=0;i<s.count;i++){const x=Math.floor(arrays.state[i*4+2]),y=Math.floor(arrays.state[i*4+3]);if(x>=0&&x<160&&y>=0&&y<100)pixels[y*160+x]=(arrays.attributes[i]&31)===21?15:(arrays.attributes[i]&31)===22?3:(arrays.attributes[i]&31)===23?7:arrays.attributes[i]&31;}
+    for(let i=0;i<s.count;i++){const x=Math.floor(arrays.state[i*4+2]),y=Math.floor(arrays.state[i*4+3]);if(x>=0&&x<160&&y>=0&&y<100)pixels[y*160+x]=(arrays.attributes[i]&31)===21?15:(arrays.attributes[i]&31)===22?3:(arrays.attributes[i]&31)===23?7:(arrays.attributes[i]&31)===24?14:arrays.attributes[i]&31;}
     for(const object of [...s.machines.rotors,...s.machines.lights,...s.machines.gates])if(object)for(let y=object.y-2;y<=object.y+2;y++)for(let x=object.x-2;x<=object.x+2;x++)pixels[y*160+x]=22;
     if(s.player.active){const x=Math.floor(s.player.x),y=Math.floor(s.player.y);for(let k=0;k<4;k++)if(x>=0&&x<160&&y-k>=0&&y-k<100)pixels[(y-k)*160+x]=23;}
     return encode(pixels);
@@ -49,7 +49,7 @@
     for (const [key, Type, length] of [['state',Float32Array,n*4],['attributes',Uint32Array,n],['ids',Uint32Array,n],['bonds',Uint32Array,n*8],['anchors',Float32Array,n*4],['walls',Uint8Array,64000],['wires',Uint8Array,16000]]) arrays[key] = decode(s[key],Type,length);
     for (const v of arrays.state) finite(v,-1000,1000);
     for (let i=0;i<arrays.anchors.length;i++) finite(arrays.anchors[i],i%4<2?-1000:0,i%4<2?1000:1e12);
-    for (const v of arrays.attributes) if ((v & 31)>23) throw new Error('Unknown material.');
+    for (const v of arrays.attributes) if ((v & 31)>24) throw new Error('Unknown material.');
     for (const v of [...arrays.walls,...arrays.wires]) if (v>1) throw new Error('Invalid wall or wire.');
     const seen = new Set();
     for (const v of arrays.ids) { const id=v & 0xfffff; if (seen.has(id)) throw new Error('Duplicate particle ID.'); seen.add(id); }

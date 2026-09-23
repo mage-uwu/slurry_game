@@ -35,7 +35,7 @@ assert energy[0]+energy[1]<45,energy
 uf[16]=.45;uf[8:10]=0;uf[13]=.012;uf[14]=.05;uf[15]=.62;uf[22]=.5;uf[25]=1;uf[84]=100
 for t in range(22):
  P=code['parameters'];uf[100+t*4:104+t*4]=[6 if t in [10,21] else 1,P['sigma'][t],P['xsph'][t],P['wallFric'][t]]
- uf[196+t*4:200+t*4]=[P['grain'][t],P['muSt'][t],P['muKt'][t],P['coh'][t]];uf[292+t*4]=P['tens'][t]
+ nt=len(P['sigma']);uf[100+nt*4+t*4:104+nt*4+t*4]=[P['grain'][t],P['muSt'][t],P['muKt'][t],P['coh'][t]];uf[100+nt*8+t*4]=P['tens'][t]
 attrs[:]=[attr(21,400),1,attr(10,40),14,1];dev.queue.write_buffer(a,0,attrs);dev.queue.write_buffer(u,0,uf)
 dens=buf(np.zeros(n*4,np.float32));wake=buf(np.ones(W*H,np.uint32));pid=buf(np.arange(n,dtype=np.uint32));idx=buf(np.zeros((1<<20)+10000,np.uint32))
 p=dev.create_compute_pipeline(layout='auto',compute={'module':dev.create_shader_module(code=code['density']),'entry_point':'main'})
