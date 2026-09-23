@@ -74,7 +74,7 @@
       const c=canvas.getContext('2d');if(!c)return;
       try{
         const data=format.decode(encoded,Uint8Array,16000),img=c.createImageData(160,100);
-        const colors=['#06070a','#5b93ff','#e0a13a','#b3aea4','#ff8a2e','#b9ec38','#ff3d70','#ff6a2a','#dbb86f','#7a7883','#cfd6e3','#8f6237','#6b5230','#e6edfb','#8ed1f7','#b6bfcc','#3ddc6a','#b59cc9','#5cff30','#bde63e','#8cac4c','#c99b4c','#e4d8a1','#ffffff'];colors[31]='#8a8f9c';
+        const colors=['#06070a','#5b93ff','#e0a13a','#b3aea4','#ff8a2e','#b9ec38','#ff3d70','#ff6a2a','#dbb86f','#7a7883','#cfd6e3','#8f6237','#6b5230','#e6edfb','#8ed1f7','#b6bfcc','#3ddc6a','#b59cc9','#5cff30','#bde63e','#8cac4c','#c99b4c','#e4d8a1','#ffffff','#b880f5','#e6d955'];colors[31]='#8a8f9c';
         for(let i=0;i<data.length;i++){const rgb=parseInt((colors[data[i]]||colors[0]).slice(1),16);img.data.set([rgb>>16,(rgb>>8)&255,rgb&255,255],i*4);}c.putImageData(img,0,0);
       }catch{c.fillStyle='#0b0c10';c.fillRect(0,0,160,100);}
     }

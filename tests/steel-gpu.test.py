@@ -14,7 +14,7 @@ data=json.loads(subprocess.check_output(['node','-e',js,str(page)],text=True))
 dev=wgpu.gpu.request_adapter_sync(power_preference='low-power').request_device_sync();U=wgpu.BufferUsage
 for shader in data['shaders'].values():dev.create_shader_module(code=shader)
 def buf(a,uniform=False):return dev.create_buffer_with_data(data=a,usage=(U.UNIFORM if uniform else U.STORAGE)|U.COPY_SRC|U.COPY_DST|U.INDIRECT)
-n=data['n'];uf=np.zeros(400,np.float32);uf.view(np.uint32)[:8]=[40,40,1600,n,80,80,1,1]
+n=data['n'];uf=np.zeros(424,np.float32);uf.view(np.uint32)[:8]=[40,40,1600,n,80,80,1,1]
 u=buf(uf,True);attr=buf(np.array(data['attrs'],np.uint32));pid=buf(np.array(data['pid'],np.uint32));bonds=buf(np.array(data['bonds'],np.uint32));idx=buf(np.array(data['idx'],np.uint32));starts=buf(np.array(data['starts'],np.uint32));walls=buf(np.zeros(6400,np.uint32));x=[buf(np.array(data['initial'],np.float32)),buf(np.zeros(n*4,np.float32))]
 pipe=dev.create_compute_pipeline(layout='auto',compute={'module':dev.create_shader_module(code=data['shaders']['steel']),'entry_point':'main'})
 cache=buf(np.zeros(4+n*25,np.uint32))

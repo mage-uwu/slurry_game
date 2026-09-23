@@ -150,3 +150,11 @@ A programmed clone produces its material at a steady rate: each clone tries once
 Output is capped so a clone can't flood the simulation. The whole world produces at most 32 cloned particles per rendered frame on WebGPU, or 8 per physics step on CPU. Cloning pauses once live particles reach 75% of capacity, which leaves room to keep painting. Clone emissions share the existing bounded rare-particle request buffer, so no new GPU buffers or passes are added. The per-type material uniform grew from 24 to 25 entries and still fits the existing 1,600-byte uniform buffer.
 
 `node tests/clone.test.cjs` (part of `npm test`) covers programming by contact, program spreading, anchoring, the emission period, surface-only emission, the per-step budget, the fill ceiling, hot phases and save validation. `python3 tests/clone-gpu.test.py` runs the real WGSL kernels natively to check programming, the period, direction rotation, surrounded silence, the fill ceiling and the per-frame budget.
+
+## Plastic
+
+**Plastic** is another anchored, ice-like solid: gravity, explosions, turbines, lights and the player cannot move it, and the eraser removes it. Unlike ice, it has a much higher melting point — ordinary fire or a brief lava touch rarely does anything to it, and only sustained, strong heat (lava, Meltdown, superheated mercury or steel, or a powered light) will eventually melt it into molten plastic, a flammable liquid.
+
+Melting and burning are the same event for the solid: whenever plastic's stored heat exposure clears its (much higher than ice's) melting-point roll, it becomes molten plastic, and if the heat was strong and direct (touching fire, lava, Meltdown or another very hot material rather than distant warmth) the liquid starts already on fire. Solid plastic is therefore never seen burning — only the liquid form burns, exactly like oil: unlit molten plastic can still catch fire from nearby heat, and once lit it ages and turns into ordinary fire after burning out. Cloning molten plastic (see Clone, above) starts it in the liquid phase.
+
+`node tests/plastic.test.cjs` (part of `npm test`) covers anchoring, resistance to brief ordinary heat, melting under sustained strong heat, melting and igniting together, unlit molten plastic catching fire, burning out into fire, and save validation.

@@ -28,7 +28,7 @@ pipes = {k: device.create_compute_pipeline(layout='auto', compute={
     'module': device.create_shader_module(code=code[k]), 'entry_point': 'main'}) for k in ['list', 'body']}
 
 for n, mixed, sign in [(257, True, -1), (131072, False, 1), (131072, False, -1)]:
-    uniform = np.zeros(400, np.float32)
+    uniform = np.zeros(424, np.float32)
     uniform.view(np.uint32)[:8] = [160, 100, 16000, n, 320, 200, 0, 1]
     points = np.zeros((n, 4), np.float32)
     points[:, 2] = 159.5 + np.arange(n) % 5 * .04
@@ -38,7 +38,7 @@ for n, mixed, sign in [(257, True, -1), (131072, False, 1), (131072, False, -1)]
     if mixed:
         attrs[::3] = 1
     ids = np.arange(1, n + 1, dtype=np.uint32)
-    uni = buffer(1600, uniform, True)
+    uni = buffer(uniform.nbytes, uniform, True)
     st = buffer(points.nbytes, points)
     at = buffer(attrs.nbytes, attrs)
     pid = buffer(ids.nbytes, ids)

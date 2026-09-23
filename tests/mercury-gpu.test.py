@@ -10,7 +10,7 @@ for key,shader in code.items():
 print('PASS native compilation: thermal, both density/relax kernels, final, lamps, player and vapor renderer')
 def buf(a,uniform=False):return dev.create_buffer_with_data(data=a,usage=(U.UNIFORM if uniform else U.STORAGE)|U.COPY_DST|U.COPY_SRC)
 n=5;W=40;H=40
-uf=np.zeros(400,np.float32);uu=uf.view(np.uint32);uu[:8]=[W,H,W*H,n,W*2,H*2,1,1]
+uf=np.zeros(424,np.float32);uu=uf.view(np.uint32);uu[:8]=[W,H,W*H,n,W*2,H*2,1,1]
 pos=np.array([[10,10,10,10],[10.2,10,10.2,10],[20,10,20,10],[20.2,10,20.2,10],[30,10,30,10]],np.float32)
 # Sorted by cell: hot/cold mercury pair, boiling mercury beside lava, isolated vapor.
 def attr(t,e):return np.uint32(t|(round(e*8)<<16))

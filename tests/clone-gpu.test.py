@@ -21,7 +21,7 @@ def buf(data=None,size=None,uniform=False):
 pipes={k:dev.create_compute_pipeline(layout='auto',compute={'module':dev.create_shader_module(code=code[k]),'entry_point':'main'})for k in['list','local']}
 meta=buf(size=1048576*32)
 def run(w,clock,starts_override=None,att=None):
- n=w['n'];uf=np.zeros(400,np.float32);uf.view(np.uint32)[:8]=[40,40,1600,n,80,80,1,1];uf[99]=clock
+ n=w['n'];uf=np.zeros(424,np.float32);uf.view(np.uint32)[:8]=[40,40,1600,n,80,80,1,1];uf[99]=clock
  starts=np.array(w['starts'],np.uint32)
  if starts_override is not None:starts[1600]=starts_override
  at=buf(np.array(w['attrs'] if att is None else att,np.uint32));emits=buf(size=4112);heads=buf(size=code['words']*4)

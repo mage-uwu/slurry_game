@@ -16,7 +16,7 @@ def run(name,resources,n):
  enc=dev.create_command_encoder();p=enc.begin_compute_pass();p.set_pipeline(pipe);p.set_bind_group(0,bg);p.dispatch_workgroups((n+255)//256);p.end();dev.queue.submit([enc.finish()])
 def life(g,v=150):return 16|((g&255)<<8)|(v<<16)|((g>>8)<<24)
 attrs=np.array([1,2,5,9,14,13,6,12,3,life(0),life(0x20),life(0xffff),life(0)|32,0],np.uint32);n=len(attrs)
-uf=np.zeros(400,np.float32);uu=uf.view(np.uint32);uu[:8]=[40,40,1600,n,80,80,1,1];uf[16]=.45;uf[38]=1;uf[43]=20;uf[46]=1;uf[[59,69,71,72,75,76]]=1
+uf=np.zeros(424,np.float32);uu=uf.view(np.uint32);uu[:8]=[40,40,1600,n,80,80,1,1];uf[16]=.45;uf[38]=1;uf[43]=20;uf[46]=1;uf[[59,69,71,72,75,76]]=1
 uni=buf(uf,True);grid=np.zeros((40,40),np.uint32);grid[17:24,17:24]=65
 lamps=np.zeros((64,4),np.float32);lamps[0]=[20,20,0,1]
 positions=np.tile(np.array([20,18.6,20,18.5],np.float32),(n,1))

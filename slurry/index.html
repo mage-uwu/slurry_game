@@ -36,6 +36,7 @@
     --snow: #e6edfb;
     --ice: #8ed1f7;
     --clone: #b880f5;
+    --plastic: #e6d955;
     --steam: #b6bfcc;
     --life: #3ddc6a;
     --tool: #d7dbe4;
@@ -94,6 +95,7 @@
   .cell[data-t="snow"]   { color: var(--snow); }
   .cell[data-t="ice"]    { color: var(--ice); }
   .cell[data-t="clone"]  { color: var(--clone); }
+  .cell[data-t="plastic"] { color: var(--plastic); }
   .cell[data-t="steam"]  { color: var(--steam); }
   .cell[data-t="player"] { color: #fff; }
   .cell[data-t="life"]   { color: var(--life); }
@@ -154,6 +156,7 @@
       <button class="cell" id="t-snow"   data-t="snow"><span class="sw"></span>Snow</button>
       <button class="cell" id="t-ice"    data-t="ice"><span class="sw"></span>Ice</button>
       <button class="cell" id="t-clone"  data-t="clone" title="Anchored solid like ice. The first material that touches it programs it; it then produces that material at a steady, capped rate. Programs spread through connected clone."><span class="sw"></span>Clone</button>
+      <button class="cell" id="t-plastic" data-t="plastic" title="Anchored solid like ice, but with a much higher melting point. Burning also melts it, and the molten liquid can burn too."><span class="sw"></span>Plastic</button>
       <button class="cell" id="t-powder" data-t="powder"><span class="sw"></span>Powder</button>
       <button class="cell" id="t-block"  data-t="block"><span class="sw"></span>Block</button>
       <button class="cell" id="t-fire"   data-t="fire"><span class="sw"></span>Fire</button>
@@ -193,7 +196,7 @@
 const TM = 31;   // type mask: five bits, so the table has room past gravel and steam
 const T_DEAD = 0, T_WATER = 1, T_OIL = 2, T_GRAVEL = 3, T_FIRE = 4, T_NITRO = 5, T_JELLO = 6, T_LAVA = 7,
       T_SAND = 8, T_POWDER = 9, T_MERC = 10, T_DIRT = 11, T_MUD = 12, T_SNOW = 13, T_ICE = 14, T_STEAM = 15,
-      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18, T_ACID = 19, T_SEED = 20, T_MERC_VAPOR = 21, T_STEEL = 22, T_MOLTEN_STEEL = 23, T_CLONE = 24;
+      T_LIFE = 16, T_CARGO = 17, T_MELTDOWN = 18, T_ACID = 19, T_SEED = 20, T_MERC_VAPOR = 21, T_STEEL = 22, T_MOLTEN_STEEL = 23, T_CLONE = 24, T_PLASTIC = 25, T_MOLTEN_PLASTIC = 26;
 // Fictional material tuning. Heat uses the existing unit-radius neighbor stencil.
 const MELTDOWN_BLAST = 10000.0, MELTDOWN_PRESSURE = 0.35, MELTDOWN_CHANCE = 0.02;
 const MELTDOWN_REACH = 0.95, MELTDOWN_THERMAL = 24.0;
@@ -348,12 +351,17 @@ GRAIN.push(0);MU_S.push(0);MU_K.push(0);COH.push(.012);TENS.push(.003);
 // Clone copies ice's anchored-solid mechanics.
 MASS.push(MASS[T_ICE]);SIGMA.push(SIGMA[T_ICE]);XSPH.push(XSPH[T_ICE]);WALLFRIC.push(WALLFRIC[T_ICE]);
 GRAIN.push(GRAIN[T_ICE]);MU_S.push(MU_S[T_ICE]);MU_K.push(MU_K[T_ICE]);COH.push(COH[T_ICE]);TENS.push(TENS[T_ICE]);
+// Plastic (solid) copies ice's anchored-solid mechanics; molten plastic copies oil's flammable-liquid ones.
+MASS.push(MASS[T_ICE]);SIGMA.push(SIGMA[T_ICE]);XSPH.push(XSPH[T_ICE]);WALLFRIC.push(WALLFRIC[T_ICE]);
+GRAIN.push(GRAIN[T_ICE]);MU_S.push(MU_S[T_ICE]);MU_K.push(MU_K[T_ICE]);COH.push(COH[T_ICE]);TENS.push(TENS[T_ICE]);
+MASS.push(1.4);SIGMA.push(SIGMA[T_OIL]);XSPH.push(XSPH[T_OIL]);WALLFRIC.push(WALLFRIC[T_OIL]);
+GRAIN.push(GRAIN[T_OIL]);MU_S.push(MU_S[T_OIL]);MU_K.push(MU_K[T_OIL]);COH.push(COH[T_OIL]);TENS.push(TENS[T_OIL]);
 const NTYPES = MASS.length; // must match the WGSL per-type uniform arrays
 const STEEL_ITERS=128;
 const isGel = t => t === T_JELLO || t === T_MELTDOWN || t === T_STEEL;
 const particleMass = a => ((a & A_FROZEN) && ((a & TM) === T_LIFE || (a & TM) === T_CARGO) ? 50 : MASS[a & TM]) * ((a & TM) === T_CARGO ? Math.max(0.12, cargoFraction(a)) : 1);
-const isFluid = t => t === 1 || t === 2 || t === 5 || t === 7 || t === 10 || t === 12 || t === 16 || t === 17 || t === T_MOLTEN_STEEL;
-const isGran = t => t === 3 || t === 8 || t === 9 || t === 11 || t === 13 || t === 14 || t === T_CLONE;
+const isFluid = t => t === 1 || t === 2 || t === 5 || t === 7 || t === 10 || t === 12 || t === 16 || t === 17 || t === T_MOLTEN_STEEL || t === T_MOLTEN_PLASTIC;
+const isGran = t => t === 3 || t === 8 || t === 9 || t === 11 || t === 13 || t === 14 || t === T_CLONE || t === T_PLASTIC;
 const isGas = t => t === 4 || t === 15 || t === T_MERC_VAPOR;
 const A_MEGA = 1 << 31; // Only FIRE uses this flag; life keeps its complete genome
 const A_BOOM = 1 << 28, A_OILF = 1 << 29, A_LIT = 1 << 30, A_FRESH = 1 << 7, A_SLEEPY = 1 << 6;
@@ -381,7 +389,7 @@ function steelStore(a,temp,roll){const q=Math.max(0,Math.min(4095,Math.floor(tem
  if(t===T_STEEL&&q>=1480)t=T_MOLTEN_STEEL;else if(t===T_MOLTEN_STEEL&&q<=1430)t=T_STEEL;
  return ((a&0xFF00)|(q<<16)|t|A_FRESH)>>>0;}
 function materialTemp(a){const t=a&TM;if(isSteel(t))return steelTemp(a);if(isMercury(t))return mercuryTemp(a);if(t===T_MELTDOWN)return 1600;if(t===T_LAVA)return 1100;if(t===T_FIRE||(t===T_OIL&&(a&A_LIT)))return 700;if(t===T_STEAM)return 100;if(t===T_ICE||t===T_SNOW)return 0;return 20;}
-function mercuryHeat(a,target){if(!isMetal(a&TM))return 0;const threshold=target===T_WATER?100:target===T_ICE||target===T_SNOW?0:target===T_OIL||target===T_POWDER||target===T_NITRO?STEEL_FIRE_TEMP:60;return Math.max(0,Math.min(2,(materialTemp(a)-threshold)/250));}
+function mercuryHeat(a,target){if(!isMetal(a&TM))return 0;const threshold=target===T_WATER?100:target===T_ICE||target===T_SNOW?0:target===T_OIL||target===T_POWDER||target===T_NITRO||target===T_PLASTIC?STEEL_FIRE_TEMP:60;return Math.max(0,Math.min(2,(materialTemp(a)-threshold)/250));}
 const WAKE_HOLD = 12, SLEEP_WINDOW = 24;
 const ID_BITS = 20, ID_SPACE = 1 << ID_BITS, ID_MASK = ID_SPACE - 1, NB = 8, BOND_EMPTY = 0xFFFFFFFF;
 const bondId = b => b >>> 12, bondLen = b => (b & 4095) / 2048;
@@ -413,7 +421,7 @@ function makeParams(o = {}) {
     lifeMud: 24.0, lifePrey: 0.15, lifeBite: 1.2,
     lifeSurf: 2.4, lifeDamp: 0.999, lifeConvP: 0.16, lifeMutP: 0.005, lifeHeat: 0.8, lifeCold: 0.08, lifeSwim: 0.72,
     lifeChemo: 0.0018, lifeLift: 0.92, lifeCross: 0.045, lifeGrip: 0.62,
-    steamLife: 520, steamP: 0.30, freezeP: 0.006, meltIce: 0.08, meltSnow: 0.20, thawSnow: 0.02, muddyP: 0.04, dryP: 0.02, powderP: 0.40,
+    steamLife: 520, steamP: 0.30, freezeP: 0.006, meltIce: 0.08, meltSnow: 0.20, thawSnow: 0.02, muddyP: 0.04, dryP: 0.02, powderP: 0.40, meltPlastic: 0.006,
     // Broad, forceful shocks; maxStep still limits travel for reliable collisions.
     fireK: 0.03, boomK: 0.42, igniteP: 0.25, litSpread: 0.5, burnT: 140, quenchP: 0.25, fireLife: 150, nitroLife: 110, boomT: 20, blastR: 16, blastS: 0.48, blastP: 0.40, jitter: 0.012,
     sleepD: 0.12,  // net drift over a window below which a particle counts as settled
@@ -479,7 +487,7 @@ class Engine {
         cx = cx < 0 ? 0 : cx >= GW ? GW - 1 : cx; cy = cy < 0 ? 0 : cy >= GH ? GH - 1 : cy;
         c = cy * GW + cx;
         const t = a & TM;
-        let active = isSteel(t) || isMercury(t) || t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_CLONE || t === T_LIFE || t === T_CARGO || t === T_ACID || t === T_SEED || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
+        let active = isSteel(t) || isMercury(t) || t === T_FIRE || t === T_LAVA || t === T_MELTDOWN || t === T_STEAM || t === T_ICE || t === T_CLONE || t === T_PLASTIC || t === T_LIFE || t === T_CARGO || t === T_ACID || t === T_SEED || (a & A_LIT) !== 0 || (a & A_FRESH) !== 0;
         if (!active) {
           if (recheck) {   // settled = small *net* drift over the window; jitter cancels itself out
             const d = Math.hypot(px[i] - this.anchor[i * 2], py[i] - this.anchor[i * 2 + 1]);
@@ -567,6 +575,7 @@ class Engine {
           if (tj === T_MELTDOWN) { hot += o * MELTDOWN_HEAT; melt = Math.max(melt, o); }
           else if (tj === T_LAVA) hot += o;
           else if (tj === T_OIL && (aj & A_LIT)) hot += o * P.litSpread;
+          else if (tj === T_MOLTEN_PLASTIC && (aj & A_LIT)) hot += o * P.litSpread;
           if (tj === T_WATER || tj === T_MUD) wet += o;
           else if (tj === T_ICE) icy += o;
           // the membrane normal counts only kin, so a colony rounds itself off against strangers too
@@ -608,7 +617,7 @@ class Engine {
       const write=(k,i,g,d)=>{cues[k]=px[i];cues[k+1]=py[i];cues[k+2]=g;cues[k+3]=d;};
       for(let i=0;i<this.n;i++) {
         const a=attr[i],t=a&TM,chemical=(t===T_OIL||t===T_NITRO||t===T_POWDER)&&!(a&A_LIT);
-        const hot=t===T_FIRE||t===T_LAVA||t===T_STEAM||t===T_MELTDOWN||(t===T_OIL&&(a&A_LIT));
+        const hot=t===T_FIRE||t===T_LAVA||t===T_STEAM||t===T_MELTDOWN||(t===T_OIL&&(a&A_LIT))||(t===T_MOLTEN_PLASTIC&&(a&A_LIT));
         if((!chemical&&!hot&&t!==T_LIFE&&t!==T_JELLO)||(a&A_FROZEN))continue;
         const cx=Math.min(cw-1,Math.max(0,Math.floor(px[i]/4))),cy=Math.min(ch-1,Math.max(0,Math.floor(py[i]/4)));
         const base=(cy*cw+cx)*24,g=genome(a),d=(px[i]-cx*4-2)**2+(py[i]-cy*4-2)**2+1;
@@ -756,6 +765,7 @@ class Engine {
               else if (tj === T_ICE || tj === T_SNOW) env -= o;
               else if (lj && (aj & A_FROZEN)) env -= o * 0.35;
               else if (tj === T_OIL && (aj & A_LIT)) env += o;
+              else if (tj === T_MOLTEN_PLASTIC && (aj & A_LIT)) env += o;
               if (tj === T_WATER || tj === T_OIL) medium += o * o * (tj === T_OIL ? 0.85 : 1);
               if (hornJ && !(organelles(ai)&O_RIGID) && r < 0.62) drain += o * 3 / strength;
             }
@@ -958,7 +968,7 @@ class Engine {
     for (let i = 0; i < n; i++) {
       const ti = attr[i] & TM;
       if (this.rho[i] < 0) { this.fx[i] = nx[i]; this.fy[i] = ny[i]; continue; }
-      if (!isGran(ti) || ti === T_ICE || ti === T_CLONE) { this.fx[i] = nx[i]; this.fy[i] = ny[i]; continue; }
+      if (!isGran(ti) || ti === T_ICE || ti === T_CLONE || ti === T_PLASTIC) { this.fx[i] = nx[i]; this.fy[i] = ny[i]; continue; }
       const x = nx[i], y = ny[i]; let sx = 0, sy = 0, c = 0;
       const cx = Math.floor(px[i]), cy = Math.floor(py[i]);
       for (let yy = cy - 1; yy <= cy + 1; yy++) {
@@ -1011,7 +1021,7 @@ class Engine {
     const { n, px, py, qx, qy, nx, ny, attr, GW, GH, cellStart: cs, P } = this;
     for (let i = 0; i < n; i++) {
       const ti = attr[i] & TM;
-      if (!isGran(ti) || ti === T_ICE || ti === T_CLONE || this.rho[i] < 0) { this.fx[i] = nx[i]; this.fy[i] = ny[i]; continue; }
+      if (!isGran(ti) || ti === T_ICE || ti === T_CLONE || ti === T_PLASTIC || this.rho[i] < 0) { this.fx[i] = nx[i]; this.fy[i] = ny[i]; continue; }
       const x = px[i], y = py[i], dix = nx[i] - qx[i], diy = ny[i] - qy[i];
       let sx = 0, sy = 0, c = 0;
       const cx = Math.floor(x), cy = Math.floor(y);
@@ -1200,6 +1210,16 @@ class Engine {
         a = (a & 0xFF00) | T_ICE; t = T_ICE;                                       // ice creeps through still water
       } else if (t === T_ICE && react > 0 && Math.random() < P.meltIce * react) {
         a = (a & 0xFF00) | T_WATER; t = T_WATER;
+      } else if (t === T_PLASTIC && react > 0 && Math.random() < P.meltPlastic * react) {
+        // A much higher melting point than ice: only strong, direct heat (react > 0.5) also sets it alight.
+        a = (a & 0xFF00) | T_MOLTEN_PLASTIC | (react > 0.5 ? A_LIT : 0); t = T_MOLTEN_PLASTIC;
+      } else if (t === T_MOLTEN_PLASTIC && (a & A_LIT)) {
+        const age = ((a >> 16) & 4095) + 1, sd = ((a >> 8) & 255) / 255;
+        if (age > P.burnT * (0.5 + sd)) { a = (a & 0xFF00) | T_FIRE | A_OILF; t = T_FIRE; }
+        else a = (a & ~(4095 << 16)) | (age << 16);
+      } else if (t === T_MOLTEN_PLASTIC && react > 0) {
+        const expo = Math.min(1, Math.max(0.04, (P.rho0 * 1.1 - this.rho[i]) / (P.rho0 * 0.5)));
+        if (Math.random() < P.igniteP * react * expo) a = (a & 0xFF00) | T_MOLTEN_PLASTIC | A_LIT;   // molten plastic burns too
       } else if (t === T_SNOW && (react > 0 ? Math.random() < P.meltSnow * react : wetv > 0.3 && Math.random() < P.thawSnow)) {
         a = (a & 0xFF00) | T_WATER; t = T_WATER;
       } else if (t === T_DIRT && wetv > 0.25 && Math.random() < P.muddyP) {
@@ -1220,7 +1240,7 @@ class Engine {
         if (Math.random() < P.igniteP * react * expo) a = (a & 0xFF00) | T_OIL | A_LIT;
       }
       attr[i] = a;
-      if (t === T_ICE || t === T_CLONE || ((t === T_LIFE || t === T_CARGO) && (a & A_FROZEN))) {
+      if (t === T_ICE || t === T_CLONE || t === T_PLASTIC || ((t === T_LIFE || t === T_CARGO) && (a & A_FROZEN))) {
         // Frozen material can still be erased, but forces cannot move it.
         if (tool && tool.kind === 1) {
           const bx = tool.vx * tool.len, by = tool.vy * tool.len, ax = tool.x - bx, ay = tool.y - by;
@@ -1257,7 +1277,7 @@ class Engine {
       }
       // At stair-step corners, resolving one axis can put the other back inside a wall.
       if (this.isWall(x, y)) { x = ox; y = oy; vx = 0; vy = 0; hitX = true; hitY = true; }
-      if (isGran(t) && t !== T_ICE && t !== T_CLONE) { // contact corrections may stop an approach but must not inject velocity
+      if (isGran(t) && t !== T_ICE && t !== T_CLONE && t !== T_PLASTIC) { // contact corrections may stop an approach but must not inject velocity
         const cx = this.ccx[i], cy = this.ccy[i], cl = Math.hypot(cx, cy);
         if (cl > 1e-9) { const ux = cx / cl, uy = cy / cl;
           const a = (this.px[i] - ox) * ux + (this.py[i] - oy) * uy;
@@ -1331,6 +1351,8 @@ function lightHeat(a,P,roll){
   if(nitroIgnites(a,1)){const fraction=t===T_CARGO?cargoFraction(a):1;const age=Math.min(4095,Math.round(-P.boomT*Math.log(fraction)));a=shade|T_FIRE|A_BOOM|(age<<16);blast=fraction;}
   else if(t===T_POWDER&&roll<P.powderP){a=shade|T_FIRE|A_BOOM|A_OILF;blast=.65;}
   else if(t===T_OIL&&!(a&A_LIT)&&roll<P.igniteP)a=shade|T_OIL|A_LIT;
+  else if(t===T_PLASTIC&&roll<P.meltPlastic)a=shade|T_MOLTEN_PLASTIC|A_LIT;
+  else if(t===T_MOLTEN_PLASTIC&&!(a&A_LIT)&&roll<P.igniteP)a=shade|T_MOLTEN_PLASTIC|A_LIT;
   else if(t===T_WATER&&roll<P.steamP)a=shade|T_STEAM;
   else if(t===T_ICE&&roll<P.meltIce||t===T_SNOW&&roll<P.meltSnow||t===T_JELLO&&roll<P.meltP)a=shade|T_WATER;
   else if(t===T_MUD&&roll<P.dryP)a=shade|T_DIRT;
@@ -1389,7 +1411,7 @@ class MachineSystem {
     if(!this.rotors.some(Boolean)&&!this.lights.some(Boolean))return;
     for(let i=0;i<e.n;i++){const a=e.attr[i],t=a&31;if(!t)continue;
       let x=e.qx[i],y=e.qy[i];const cell=Math.floor(y)*this.w+Math.floor(x);if(x<0||y<0||x>=this.w||y>=this.h)continue;const id=this.map[cell];if(id>ROTOR_MAX){const l=this.lights[id-ROTOR_MAX-1];if(l)this.lightContact(e,i,l);continue;}
-      if(t===14||t===T_CLONE||((t===16||t===17)&&(a&32)))continue;const r=this.rotors[id-1];if(!r)continue;
+      if(t===14||t===T_CLONE||t===T_PLASTIC||((t===16||t===17)&&(a&32)))continue;const r=this.rotors[id-1];if(!r)continue;
       const co=Math.cos(r.angle),si=Math.sin(r.angle),rx=x-r.x,ry=y-r.y,lx=co*rx+si*ry,ly=-si*rx+co*ry,w=.58;
       const h=Math.abs(lx)<4.18&&Math.abs(ly)<w,v=Math.abs(ly)<4.18&&Math.abs(lx)<w;if(!h&&!v)continue;
       let nx=0,ny=0,depth=0;
@@ -1412,7 +1434,7 @@ class MachineSystem {
       if(result.blast && Math.random()<e.P.blastP*result.blast && e.blastOut.length<128)e.blastOut.push(x,y);
       a=result.attr|A_FRESH;e.attr[i]=a;
     }
-    if(d>=LIGHT_RADIUS||(a&TM)===T_ICE||(a&TM)===T_CLONE||((a&TM)===T_LIFE||(a&TM)===T_CARGO)&&(a&A_FROZEN))return;
+    if(d>=LIGHT_RADIUS||(a&TM)===T_ICE||(a&TM)===T_CLONE||(a&TM)===T_PLASTIC||((a&TM)===T_LIFE||(a&TM)===T_CARGO)&&(a&A_FROZEN))return;
     const nx=d>1e-6?dx/d:0,ny=d>1e-6?dy/d:-1;
     let vx=e.px[i]-x,vy=e.py[i]-y;const inward=Math.min(0,vx*nx+vy*ny);vx-=inward*nx;vy-=inward*ny;
     const shift=Math.min(LIGHT_RADIUS-d+.001,.42),cx=x+nx*shift,cy=y+ny*shift;
@@ -1470,7 +1492,7 @@ class Stickman {
     this.x=x;this.y=y;this.phase+=Math.abs(this.vx)*.65;
     for(const j of near){const t=e.attr[j]&TM;if((t===T_FIRE||t===T_LAVA||t===T_MELTDOWN||t===T_ACID)&&Math.abs(e.qx[j]-x)<1.15&&Math.abs(e.qy[j]-(y-2.1))<2.4){this.die();return;}}
     // The player pushes nearby material through ordinary particle velocity, never writes walls.
-    for(const j of near){const a=e.attr[j],t=a&TM;if(t===T_ICE||t===T_CLONE||(a&A_FROZEN))continue;
+    for(const j of near){const a=e.attr[j],t=a&TM;if(t===T_ICE||t===T_CLONE||t===T_PLASTIC||(a&A_FROZEN))continue;
       const dx=e.qx[j]-x,dy=e.qy[j]-(y-2.1),ox=1.03-Math.abs(dx),oy=2.28-Math.abs(dy);if(ox<=0||oy<=0)continue;
       const nx=ox<oy?(dx>=0?1:-1):0,ny=ox<oy?0:(dy>=0?1:-1),depth=Math.min(ox,oy,.18);
       const px=e.qx[j]+nx*depth,py=e.qy[j]+ny*depth;if(wall(px,py))continue;
@@ -1639,7 +1661,7 @@ struct Params {
   sleepD: f32, sleepV: f32, wakeAll: u32, window: u32,
   steamLife: f32, steamP: f32, freezeP: f32, meltIce: f32,
   meltSnow: f32, thawSnow: f32, muddyP: f32, dryP: f32,
-  powderP: f32, q4: f32, q5: f32, q6: f32,
+  powderP: f32, meltPlastic: f32, q5: f32, q6: f32,
   lifeDigest: f32, lifeCost: f32, lifeDiv: f32, lifeDivCost: f32,
   lifeStart: f32, lifeMud: f32, lifePrey: f32, lifeBite: f32,
   lifeConvP: f32, lifeMutP: f32, lifeHeat: f32, lifeCold: f32,
@@ -1675,9 +1697,9 @@ fn isMetal(t:u32)->bool{return isMercury(t)||isSteel(t);}
 fn steelTemp(a:u32)->f32{return 20.0+f32((a>>16u)&4095u);}
 fn steelStore(a:u32,temp:f32,roll:f32)->u32{let q=u32(clamp(floor(temp-20.0+roll),0.0,4095.0));var t=a&TM;if(t==22u&&q>=1480u){t=23u;}else if(t==23u&&q<=1430u){t=22u;}return (a&0xFF00u)|(q<<16u)|t|A_FRESH;}
 fn materialTemp(a:u32)->f32{let t=a&TM;if(isSteel(t)){return steelTemp(a);}if(isMercury(t)){return mercuryTemp(a);}if(t==18u){return 1600.0;}if(t==7u){return 1100.0;}if(t==4u||(t==2u&&(a&A_LIT)!=0u)){return 700.0;}if(t==15u){return 100.0;}if(t==14u||t==13u){return 0.0;}return 20.0;}
-fn mercuryHeat(a:u32,recipient:u32)->f32{if(!isMetal(a&TM)){return 0.0;}var threshold=60.0;if(recipient==1u){threshold=100.0;}else if(recipient==14u||recipient==13u){threshold=0.0;}else if(recipient==2u||recipient==9u||recipient==5u){threshold=${STEEL_FIRE_TEMP}.0;}return clamp((materialTemp(a)-threshold)/250.0,0.0,2.0);}
-fn isFluid(t: u32) -> bool { return t == 1u || t == 2u || t == 5u || t == 7u || t == 10u || t == 12u || t == 16u || t == 17u || t == 23u; }
-fn isGran(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || t == 13u || t == 14u || t == 24u; }
+fn mercuryHeat(a:u32,recipient:u32)->f32{if(!isMetal(a&TM)){return 0.0;}var threshold=60.0;if(recipient==1u){threshold=100.0;}else if(recipient==14u||recipient==13u){threshold=0.0;}else if(recipient==2u||recipient==9u||recipient==5u||recipient==25u){threshold=${STEEL_FIRE_TEMP}.0;}return clamp((materialTemp(a)-threshold)/250.0,0.0,2.0);}
+fn isFluid(t: u32) -> bool { return t == 1u || t == 2u || t == 5u || t == 7u || t == 10u || t == 12u || t == 16u || t == 17u || t == 23u || t == 26u; }
+fn isGran(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || t == 13u || t == 14u || t == 24u || t == 25u; }
 // ---- life: the attribute word means something else for a living particle ----
 //   bits 8-15 appearance, 16-23 vitality; top byte packs behaviour + organelle clauses
 const B_MOTILE = 1u; const B_BUOY = 2u; const B_HARDY = 8u;
@@ -1819,7 +1841,7 @@ const SH_COUNT = HDR + /* wgsl */`
   if (t != 0u) {
     let s = st[i];
     let q = cellXY(s.xy); c = u32(q.y) * P.gw + u32(q.x);
-    var awakeNow = isSteel(t) || isMercury(t) || t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 24u || t == 16u || t == 17u || t == 19u || t == 20u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
+    var awakeNow = isSteel(t) || isMercury(t) || t == 4u || t == 7u || t == 18u || t == 15u || t == 14u || t == 24u || t == 25u || t == 16u || t == 17u || t == 19u || t == 20u || (a & A_LIT) != 0u || (a & A_FRESH) != 0u;
     if (!awakeNow) {
       let an = anchor[i];
       if (f32(P.frame) - an.z >= f32(P.window)) {   // settled = small *net* drift over the window; jitter cancels out
@@ -2032,6 +2054,7 @@ ${SPAN}
         if (tj == 18u) { hot += o * MELTDOWN_HEAT; melt = max(melt, o); }
         else if (tj == 7u) { hot += o; }
         else if (tj == 2u && (aj & A_LIT) != 0u) { hot += o * P.litSpread; }
+        else if (tj == 26u && (aj & A_LIT) != 0u) { hot += o * P.litSpread; }
         if (tj == 1u || tj == 12u) { wet += o; }
         else if (tj == 14u) { icy += o; }
         if (tsi && tj == ti && (ti != 16u || genome(aj) == gmi)) { let dl = 1.0 - o; if (dl > 1e-3) { nv += dv * (o / dl); } }
@@ -2170,6 +2193,7 @@ var<workgroup> ltot: u32;
         if (tj == 18u) { hot += o * MELTDOWN_HEAT; melt = max(melt, o); }
         else if (tj == 7u) { hot += o; }
         else if (tj == 2u && (aj & A_LIT) != 0u) { hot += o * P.litSpread; }
+        else if (tj == 26u && (aj & A_LIT) != 0u) { hot += o * P.litSpread; }
         if (tj == 1u || tj == 12u) { wet += o; }
         else if (tj == 14u) { icy += o; }
         if (tsi && tj == ti && (ti != 16u || genome(aj) == gmi)) { let dl = 1.0 - o; if (dl > 1e-3) { nv += dv * (o / dl); } }
@@ -2207,7 +2231,7 @@ const SH_CUES = HDR + /* wgsl */`
   for (var y = cy; y < min(cy+4u,P.gh); y++) {
     for (var j = starts[y*P.gw+cx]; j < starts[y*P.gw+min(cx+4u,P.gw)]; j++) {
       let a = att[j]; let t = a & TM; let chemical = (t == 2u || t == 5u || t == 9u) && (a&A_LIT)==0u;
-      let hot=t==4u||t==7u||t==15u||t==18u||(t==2u&&(a&A_LIT)!=0u);
+      let hot=t==4u||t==7u||t==15u||t==18u||(t==2u&&(a&A_LIT)!=0u)||(t==26u&&(a&A_LIT)!=0u);
       if ((!chemical && !hot && t != 16u && t != 6u) || (a & A_FROZEN) != 0u || (chemical && (a & A_LIT) != 0u)) { continue; }
       let p = st[j].xy; let delta = p-centre; let d = dot(delta,delta)+1.0; let g = f32(genome(a));
       let entry = vec4f(p,g,d);
@@ -2358,6 +2382,7 @@ ${SPAN}
           else if (tj == 14u || tj == 13u) { envh -= o; }
           else if (lj && (aj & A_FROZEN) != 0u) { envh -= o * 0.35; }
           else if (tj == 2u && (aj & A_LIT) != 0u) { envh += o; }
+          else if (tj == 26u && (aj & A_LIT) != 0u) { envh += o; }
           if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, 0.85, tj == 2u); }
           if (hornJ && rl < 0.62) { drain += o * 3.0 / strength; }
         }
@@ -2668,6 +2693,7 @@ var<workgroup> ltot: u32;
           else if (tj == 14u || tj == 13u) { envh -= o; }
           else if (lj && (aj & A_FROZEN) != 0u) { envh -= o * 0.35; }
           else if (tj == 2u && (aj & A_LIT) != 0u) { envh += o; }
+          else if (tj == 26u && (aj & A_LIT) != 0u) { envh += o; }
           if (tj == 1u || tj == 2u) { medium += o * o * select(1.0, 0.85, tj == 2u); }
           if (hornJ && rl < 0.62) { drain += o * 3.0 / strength; }
         }
@@ -2825,7 +2851,7 @@ ${SPAN}
   let i = gid.x; if (i >= starts[P.nc]) { return; }
   let xi = Xi[i];
   let ti = att[i] & TM;
-  if (!isGran(ti) || ti == 14u || ti == 24u || dens[i].x < 0.0) { Xo[i] = xi; return; }
+  if (!isGran(ti) || ti == 14u || ti == 24u || ti == 25u || dens[i].x < 0.0) { Xo[i] = xi; return; }
   let x = xi.xy; let wi = dens[i].z;
   var s = vec2f(0.0); var cnt = 0.0;
   let c = cellXY(st[i].xy);
@@ -2894,7 +2920,7 @@ ${SPAN}
   let i = gid.x; if (i >= starts[P.nc]) { return; }
   let xi = Xi[i];
   let ti = att[i] & TM;
-  if (!isGran(ti) || ti == 14u || ti == 24u || dens[i].x < 0.0) { Xo[i] = xi; return; }
+  if (!isGran(ti) || ti == 14u || ti == 24u || ti == 25u || dens[i].x < 0.0) { Xo[i] = xi; return; }
   let si = st[i]; let x = si.xy; let di = xi.xy - si.zw;
   var s = vec2f(0.0); var cnt = 0.0;
   let qi = P.pb[ti];
@@ -3113,6 +3139,16 @@ fn wallAt(p: vec2f) -> bool {
     a = (a & 0xFF00u) | 14u; t = 14u;                                 // ice creeps through still water
   } else if (t == 14u && react > 0.0 && r1 < P.meltIce * react) {
     a = (a & 0xFF00u) | 1u; t = 1u;
+  } else if (t == 25u && react > 0.0 && r1 < P.meltPlastic * react) {
+    // A much higher melting point than ice: only strong, direct heat (react > 0.5) also sets it alight.
+    a = (a & 0xFF00u) | 26u | select(0u, A_LIT, react > 0.5); t = 26u;
+  } else if (t == 26u && (a & A_LIT) != 0u) {
+    let age = ((a >> 16u) & 0xFFFu) + 1u;
+    if (f32(age) > P.burnT * (0.5 + f32((a >> 8u) & 255u) / 255.0)) { a = (a & 0xFF00u) | 4u | A_OILF; t = 4u; }
+    else { a = (a & ~(0xFFFu << 16u)) | (age << 16u); }
+  } else if (t == 26u && react > 0.0) {
+    let expo = clamp((P.rho0 * 1.1 - dn.x) / (P.rho0 * 0.5), 0.04, 1.0);
+    if (r1 < P.igniteP * react * expo) { a = (a & 0xFF00u) | 26u | A_LIT; }   // molten plastic burns too
   } else if (t == 13u) {
     var thaw = wetv > 0.3 && r1 < P.thawSnow;                         // snow melts near heat, slumps when soaked
     if (react > 0.0) { thaw = r1 < P.meltSnow * react; }
@@ -3136,7 +3172,7 @@ fn wallAt(p: vec2f) -> bool {
     if (r1 < P.igniteP * react * expo) { a = (a & 0xFF00u) | 2u | A_LIT; }
   }
   att[i] = a;
-  if (t == 14u || t == 24u || ((t == 16u || t == 17u) && (a & A_FROZEN) != 0u)) {
+  if (t == 14u || t == 24u || t == 25u || ((t == 16u || t == 17u) && (a & A_FROZEN) != 0u)) {
     if (P.toolKind == 1u) {
       let ab = P.toolVel * P.toolLen; let ta = P.toolPos - ab;
       let u = clamp(dot(o - ta, ab) / max(dot(ab, ab), 1e-9), 0.0, 1.0);
@@ -3268,7 +3304,7 @@ fn lavaHeat(a: u32) -> f32 {
   let life = R.lavaCool * (0.7 + 0.6 * f32((a >> 8u) & 255u) / 255.0);
   return clamp(1.0 - f32((a >> 16u) & 0xFFFu) / life, 0.0, 1.0);
 }
-fn isGranR(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || t == 13u || t == 14u || t == 24u; }
+fn isGranR(t: u32) -> bool { return t == 3u || t == 8u || t == 9u || t == 11u || t == 13u || t == 14u || t == 24u || t == 25u; }
 fn lifeOf(a: u32) -> f32 {
   let sd = f32((a >> 8u) & 255u) / 255.0;
   var L = select(R.fireLife, R.nitroLife, (a & A_BOOM) != 0u) * (0.6 + 0.8 * sd);
@@ -3303,6 +3339,7 @@ const SH_PIX = RHDR + /* wgsl */`
   else if (t == 2u) { sh = select(0.0, 1.0, (a & A_LIT) != 0u); }
   else if (t == 4u || t == 15u) { sh = clamp(f32((a >> 16u) & 0xFFFu) / lifeOf(a), 0.0, 1.0); }
   else if (t == 22u) { sh = select(0.0,1.0,20u+((a>>16u)&4095u)>=${STEEL_FIRE_TEMP}u); }
+  else if (t == 26u) { sh = select(0.0, 1.0, (a & A_LIT) != 0u); }
   else if (t == 7u) { sh = lavaHeat(a); }
   else if (t == 24u) { sh = select(0.0, 1.0, ((a >> 16u) & 31u) != 0u); }   // clone: lit once programmed
   else if (t == 16u) { sh = seed; }   // life: the shade byte is the appearance genome itself
@@ -3473,6 +3510,14 @@ fn clonePix(depth: f32, surf: bool, programmed: bool) -> vec3f {
   if (depth < 1.1) { return vec3f(0.72, 0.50, 0.96) * k; }
   return vec3f(0.52, 0.32, 0.80) * k;
 }
+fn plasticPix(depth: f32, surf: bool) -> vec3f {
+  if (surf) { return vec3f(0.98, 0.95, 0.55); }
+  if (depth < 1.1) { return vec3f(0.90, 0.85, 0.35); }
+  return vec3f(0.72, 0.66, 0.20);
+}
+fn moltenPlasticPix(burning: bool) -> vec3f {
+  return select(vec3f(0.85, 0.55, 0.10), vec3f(1.0, 0.42, 0.05), burning);
+}
 fn icePix(depth: f32, surf: bool) -> vec3f {
   if (surf) { return vec3f(0.78, 0.94, 1.0); }
   if (depth < 1.1) { return vec3f(0.55, 0.82, 0.97); }
@@ -3589,6 +3634,8 @@ fn steamPix(age: f32) -> vec3f {
     else if (which == 13u) { col = snowPix(shade, surf); }
     else if (which == 14u) { col = icePix(depth, surf); }
     else if (which == 24u) { col = clonePix(depth, surf, shade > 0.5); }
+    else if (which == 25u) { col = plasticPix(depth, surf); }
+    else if (which == 26u) { col = moltenPlasticPix(shade > 0.5); }
     else if (which == 15u) { col = steamPix(shade); }
     else if(which==23u){col=vec3f(1.0,.75,.08);}
     else if (which == 22u) { col=select(vec3f(.43,.48,.56),vec3f(.82,.12,.055),shade>0.0); }
@@ -3769,8 +3816,9 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   var q = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0), vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0));
   var o: VO;
   let a = att[ii]; let t = a & TM;
-  o.t = select(t, (a >> 24u) & 31u, t == 17u); o.uv = q[vi]; o.seed = f32((a >> 8u) & 255u) / 255.0;
-  let show = select(t==21u || t==19u || t==20u || (t == 3u && R.mode == 1u) || (R.mode == 2u && t != 23u && t != 22u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
+  o.t = select(t, (a >> 24u) & 31u, t == 17u); o.uv = q[vi];
+  o.seed = select(f32((a >> 8u) & 255u) / 255.0, select(0.0, 1.0, (a & A_LIT) != 0u), t == 26u);
+  let show = select(t==21u || t==19u || t==20u || t==26u || (t == 3u && R.mode == 1u) || (R.mode == 2u && t != 23u && t != 22u && t != 0u && t != 4u && t != 16u && t != 17u), t == 17u, inclusions);
   if (!show) { o.pos = vec4f(2.0, 2.0, 0.0, 1.0); return o; }
   let rad = select(select(select(R.drad,0.34,t==22u), R.grad, t == 3u), 0.06 + 0.32 * sqrt(f32((a >> 16u) & 255u) / 255.0), t == 17u);
   let p = st[ii].zw + q[vi] * rad;
@@ -3785,7 +3833,9 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
   let cov = 1.0 - smoothstep(1.0 - aa * 1.5, 1.0, r);
   if (cov <= 0.0) { discard; }
   var col: vec3f;
-  if(i.t==19u){col=vec3f(0.72,1.0,0.08);}else if(i.t==20u){col=vec3f(0.67,0.47,0.15);}else if (isGranR(i.t)) {
+  if(i.t==19u){col=vec3f(0.72,1.0,0.08);}else if(i.t==20u){col=vec3f(0.67,0.47,0.15);}
+  else if(i.t==26u){col=select(vec3f(0.85,0.55,0.10),vec3f(1.0,0.42,0.05),i.seed>0.5);}
+  else if (isGranR(i.t)) {
     var base = vec3f(0.42 + 0.34 * fract(i.seed * 7.31));
     if (i.t == 8u) { base *= vec3f(1.45, 1.24, 0.80); }        // sand
     else if (i.t == 9u) { base *= vec3f(0.40, 0.40, 0.46); }   // gunpowder
@@ -3793,6 +3843,7 @@ fn dotVertex(vi: u32, ii: u32, inclusions: bool) -> VO {
     else if (i.t == 13u) { base = vec3f(0.88 + 0.12 * fract(i.seed * 7.31)) * vec3f(0.97, 0.99, 1.04); }
     else if (i.t == 14u) { base = vec3f(0.55, 0.82, 0.97); }   // ice
     else if (i.t == 24u) { base = vec3f(0.72, 0.50, 0.96); }   // clone
+    else if (i.t == 25u) { base = vec3f(0.90, 0.85, 0.35); }   // plastic
     let tint = select(vec3f(0.94, 0.97, 1.02), vec3f(1.04, 0.98, 0.90), i.seed > 0.5);
     let lit = 1.0 - 0.42 * r * r + 0.22 * clamp(-(i.uv.x + i.uv.y) * 0.7, 0.0, 1.0);
     col = base * tint * lit + vec3f(1.0, 0.72, 0.42) * R.flash * 0.25;
@@ -4116,7 +4167,7 @@ const SH_PLAYER_PUSH = HDR + PLAYER_HDR + /* wgsl */`
 @group(0) @binding(4) var<storage,read> walls: array<u32>;
 @compute @workgroup_size(256) fn main(@builtin(global_invocation_id) gid:vec3u){
  if(player.reserved.x<0.5){return;}
- let i=gid.x;if(i>=P.nUpper){return;}let a=att[i];let t=a&TM;if(t==0u||t==14u||t==24u||(a&A_FROZEN)!=0u){return;}
+ let i=gid.x;if(i>=P.nUpper){return;}let a=att[i];let t=a&TM;if(t==0u||t==14u||t==24u||t==25u||(a&A_FROZEN)!=0u){return;}
  let s=st[i];let d=s.zw-(player.pos-vec2f(0.0,2.1));let overlap=vec2f(1.03,2.28)-abs(d);if(any(overlap<=vec2f(0.0))){return;}
  var n=vec2f(0.0,select(-1.0,1.0,d.y>=0.0));if(overlap.x<overlap.y){n=vec2f(select(-1.0,1.0,d.x>=0.0),0.0);}
  let p=s.zw+n*min(min(overlap.x,overlap.y),0.18);let c=vec2i(floor(p*2.0));if(any(c<vec2i(0))||c.x>=i32(P.ww)||c.y>=i32(P.wh)){return;}if(walls[u32(c.y)*P.ww+u32(c.x)]!=0u){return;}
@@ -4144,6 +4195,8 @@ fn lampHeat(a0:u32,i:u32,p:vec2f)->u32{
  if(nitroIgnites(a,1.0)){let fraction=select(1.0,f32(vitOf(a))/255.0,t==17u);let age=u32(min(4095.0,floor(-P.boomT*log(fraction)+0.5)));a=shade|4u|A_BOOM|(age<<16u);blast=fraction;}
  else if(t==9u&&roll<P.powderP){a=shade|4u|A_BOOM|A_OILF;blast=0.65;}
  else if(t==2u&&(a&A_LIT)==0u&&roll<P.igniteP){a=shade|2u|A_LIT;}
+ else if(t==25u&&roll<P.meltPlastic){a=shade|26u|A_LIT;}
+ else if(t==26u&&(a&A_LIT)==0u&&roll<P.igniteP){a=shade|26u|A_LIT;}
  else if(t==1u&&roll<P.steamP){a=shade|15u;}
  else if((t==14u&&roll<P.meltIce)||(t==13u&&roll<P.meltSnow)||(t==6u&&roll<P.meltP)){a=shade|1u;}
  else if(t==12u&&roll<P.dryP){a=shade|11u;}
@@ -4154,7 +4207,7 @@ fn lampHeat(a0:u32,i:u32,p:vec2f)->u32{
 fn lampContact(i:u32,l:vec4f){
  if(l.w<0.5){return;}let s=st[i];var p=s.zw;let delta=p-l.xy;let dist=length(delta);if(dist>2.15){return;}
  var a=att[i];if(l.z>0.5){a=lampHeat(a,i,p)|A_FRESH;att[i]=a;}
- let t=a&TM;if(dist>=1.8||t==14u||t==24u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}
+ let t=a&TM;if(dist>=1.8||t==14u||t==24u||t==25u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}
  var n=vec2f(0.0,-1.0);if(dist>1e-6){n=delta/dist;}
  var velocity=s.xy-p;velocity-=min(0.0,dot(velocity,n))*n;
  let corrected=p+n*min(1.8-dist+0.001,0.42);let wc=vec2i(floor(corrected*2.0));
@@ -4166,7 +4219,7 @@ fn lampContact(i:u32,l:vec4f){
  if(t==0u){return;}
  let s=st[i];var p=s.zw;if(any(p<vec2f(0.0))||p.x>=f32(P.gw)||p.y>=f32(P.gh)){return;}
  let id=grid[u32(p.y)*P.gw+u32(p.x)];if(id==0u){return;}if(id>64u){lampContact(i,lights[id-65u]);return;}
- if(t==14u||t==24u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}let k=id-1u;if(rotors[k].present==0u){return;}
+ if(t==14u||t==24u||t==25u||((t==16u||t==17u)&&(a&A_FROZEN)!=0u)){return;}let k=id-1u;if(rotors[k].present==0u){return;}
  let r=p-rotors[k].center;let co=cos(rotors[k].angle);let si=sin(rotors[k].angle);
  let local=vec2f(co*r.x+si*r.y,-si*r.x+co*r.y);let w=0.58;
  let h=abs(local.x)<4.18&&abs(local.y)<w;let v=abs(local.y)<4.18&&abs(local.x)<w;if(!h&&!v){return;}
@@ -4216,12 +4269,12 @@ const MAXP_GPU = 1 << 17, MAXP_CPU = 12000;
 
 const PEN_R = [0.7, 1.3, 2.2, 3.4, 5, 7.2, 10];
 //                -  wat oil grv fir nit jel lav san pow mer dir mud sno ice stm
-const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4, 0, 0, 0, 4, 0, 3];   // spawn fill target per h x h cell; cargo is only ingested
+const CAP = [0, 4, 4, 2, 2, 4, 4, 4, 3, 3, 4, 3, 4, 3, 3, 3, 4, 0, 4, 0, 0, 0, 4, 0, 3, 3, 4];   // spawn fill target per h x h cell; cargo is only ingested
 const GRAV = [[0, 1, '↓'], [0, 0, '0'], [0, -1, '↑']];
 const SPEEDS = [[0.5, '½'], [1, '1x'], [2, '2x']];
-const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player', 'light', 'steel', 'clone'];
+const TOOLS = ['water', 'oil', 'nitro', 'merc', 'mud', 'lava', 'jello', 'life', 'sand', 'gravel', 'dirt', 'snow', 'ice', 'powder', 'block', 'fire', 'steam', 'erase', 'wind', 'drag', 'meltdown', 'turbine', 'wire', 'gate', 'player', 'light', 'steel', 'clone', 'plastic'];
 const TYPE_OF = { steel:T_STEEL, water: T_WATER, oil: T_OIL, gravel: T_GRAVEL, fire: T_FIRE, nitro: T_NITRO, jello: T_JELLO, lava: T_LAVA,
-                  sand: T_SAND, powder: T_POWDER, merc: T_MERC, dirt: T_DIRT, mud: T_MUD, snow: T_SNOW, ice: T_ICE, clone: T_CLONE, steam: T_STEAM, life: T_LIFE, meltdown: T_MELTDOWN };
+                  sand: T_SAND, powder: T_POWDER, merc: T_MERC, dirt: T_DIRT, mud: T_MUD, snow: T_SNOW, ice: T_ICE, clone: T_CLONE, plastic: T_PLASTIC, steam: T_STEAM, life: T_LIFE, meltdown: T_MELTDOWN };
 const PRM = makeParams();
 const machines = new MachineSystem(W,H);
 const player = new Stickman(W,H);
@@ -4294,8 +4347,8 @@ class GpuSim {
     device.pushErrorScope('validation');
     const U = GPUBufferUsage, M = this.maxP;
     const B = (size, usage) => device.createBuffer({ size, usage });
-    this.uniAB = new ArrayBuffer(1600); this.uf = new Float32Array(this.uniAB); this.uu = new Uint32Array(this.uniAB);
-    this.uni = B(1600, U.UNIFORM | U.COPY_DST);
+    this.uniAB = new ArrayBuffer(100 * 4 + NTYPES * 48); this.uf = new Float32Array(this.uniAB); this.uu = new Uint32Array(this.uniAB);
+    this.uni = B(this.uniAB.byteLength, U.UNIFORM | U.COPY_DST);
     this.st = [B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 16, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
     this.at = [B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC), B(M * 4, U.STORAGE | U.COPY_DST | U.COPY_SRC)];
     this.key = B(M * 4, U.STORAGE);
@@ -4512,7 +4565,7 @@ class GpuSim {
     uf[64] = P.sleepD; uf[65] = P.sleepV; uu[66] = (wallsDirty || this.wakeAll > 0) ? 1 : 0; uu[67] = 6;   // re-check settling every 6 frames
     uf[68] = P.steamLife; uf[69] = P.steamP; uf[70] = P.freezeP; uf[71] = P.meltIce;
     uf[72] = P.meltSnow; uf[73] = P.thawSnow; uf[74] = P.muddyP; uf[75] = P.dryP;
-    uf[76] = P.powderP; uf[77] = 0; uf[78] = 0; uf[79] = 0;
+    uf[76] = P.powderP; uf[77] = P.meltPlastic; uf[78] = 0; uf[79] = 0;
     uf[80] = P.lifeDigest; uf[81] = P.lifeCost; uf[82] = P.lifeDiv; uf[83] = P.lifeDivCost;
     uf[84] = P.lifeStart; uf[85] = P.lifeMud; uf[86] = P.lifePrey; uf[87] = P.lifeBite;
     uf[88] = P.lifeConvP; uf[89] = P.lifeMutP; uf[90] = P.lifeHeat; uf[91] = P.lifeCold;
@@ -4767,6 +4820,8 @@ class CpuSim {
         c = sh > 0.5 ? [237, 242, 252] : [214, 224, 245]; }
       else if (t === 14) c = [140, 209, 247];
       else if (t === T_CLONE) c = cloneProg(a) ? [184, 128, 245] : [133, 92, 176];
+      else if (t === T_PLASTIC) c = [230, 217, 89];
+      else if (t === T_MOLTEN_PLASTIC) c = (a & A_LIT) ? [255, 107, 13] : [217, 140, 26];
       else if(t===T_STEEL)c=[145,158,176];
       else if(t===T_MERC_VAPOR)c=[120,130,144];
       else if (t === 15) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
@@ -4849,7 +4904,7 @@ class CpuSim {
     for (let i = 0; i < e.n; i++) {
       const a = e.attr[i], t = a & TM;
       const gran = isGran(t);
-      if (!gran && t !== T_MERC_VAPOR && t !== 4 && t !== 15 && !(t === 2 && (a & A_LIT))) continue;
+      if (!gran && t !== T_MERC_VAPOR && t !== 4 && t !== 15 && !(t === 2 && (a & A_LIT)) && t !== T_MOLTEN_PLASTIC) continue;
       const cx = e.qx[i] * S, cy = e.qy[i] * S;
       let c, rr = 1.1;
       if (gran) { const sh = (((a >> 8) & 255) / 255 * 7.31) % 1, gv = (107 + 87 * sh) | 0;
@@ -4859,9 +4914,11 @@ class CpuSim {
           : t === 11 ? [(gv * 1.05) | 0, (gv * 0.74) | 0, (gv * 0.47) | 0]
           : t === 13 ? [(224 + 26 * sh) | 0, (232 + 23 * sh) | 0, 250]
           : t === T_CLONE ? (cloneProg(a) ? [184, 128, 245] : [133, 92, 176])
+          : t === T_PLASTIC ? [230, 217, 89]
           : [140, 209, 247]; }
       else if(t===T_STEEL)c=[145,158,176];
       else if(t===T_MERC_VAPOR)c=[120,130,144];
+      else if(t===T_MOLTEN_PLASTIC)c=(a&A_LIT)?[255,107,13]:[217,140,26];
       else if (t === 15) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
         c = u < 0.3 ? [230, 237, 245] : u < 0.6 ? [189, 199, 212] : [140, 148, 161]; }
       else if (t === 4) { const u = Math.min(1, ((a >> 16) & 4095) / fireLifeOf(a, P));
